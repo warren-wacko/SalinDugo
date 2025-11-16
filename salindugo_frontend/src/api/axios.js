@@ -23,25 +23,24 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      (error.response?.status === 401 || error.response?.status === 403) &&
+      !originalRequest._retry
+    ) {
       originalRequest._retry = true;
 
       try {
         const refreshToken = localStorage.getItem("refreshToken");
         if (!refreshToken) throw new Error("No refresh token");
 
-        // Try refreshing access token
         const res = await axios.post(
-          `${import.meta.env.VITE_API_URL}/auth/refresh`,
-          {
-            refreshToken,
-          }
+          `${import.meta.env.VITE_API_URL}/auth/refresh-token`,
+          { refreshToken }
         );
 
         const newAccessToken = res.data.accessToken;
         localStorage.setItem("accessToken", newAccessToken);
 
-        // Update header and retry original request
         originalRequest.headers["Authorization"] = `Bearer ${newAccessToken}`;
         return api(originalRequest);
       } catch (err) {

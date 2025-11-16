@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense, useContext } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -45,7 +45,16 @@ import {
   Package,
   Loader2,
   TextSearch,
+  HeartHandshake,
 } from "lucide-react";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
 import Navbar from "../../../components/ui/navbar";
 import { AuthContext } from "../../../context/AuthContext";
 const DonationHistoryTab = lazy(() =>
@@ -57,7 +66,7 @@ import BloodDropLoader from "../../../utils/bloodDropLoader";
 import api from "../../../api/axios";
 export default function UnifiedDashboard() {
   const [mode, setMode] = useState("donate");
-  const { user, accessToken } = AuthContext._currentValue;
+  const { user, accessToken } = useContext(AuthContext);
   const [selectedLocation, setSelectedLocation] = useState("all");
   const [selectedUrgency, setSelectedUrgency] = useState("all");
   const [open, setOpen] = useState(false);
@@ -174,11 +183,13 @@ export default function UnifiedDashboard() {
     if (user) {
       localStorage.setItem("totalDonations", user.totalDonations);
       localStorage.setItem("remainingUnits", user.remainingUnits);
+      localStorage.getItem("accessToken");
     }
 
     const fetchHospitals = async () => {
       try {
         const res = await api.get("/api/hospitals");
+        console.log("Hospitals API Response:", res.data);
         setHospitals(res.data);
       } catch (err) {
         console.error("Failed to fetch hospitals:", err);
@@ -829,7 +840,8 @@ export default function UnifiedDashboard() {
                                     </div>
                                     <div className="flex items-center gap-1">
                                       <Clock className="h-3 w-3" />
-                                      {hospital.distance_km.toFixed(1)} km away
+                                      {hospital?.distance_km?.toFixed(1)} km
+                                      away
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-4 text-sm">
@@ -980,7 +992,7 @@ export default function UnifiedDashboard() {
                     </Select>
                   </div>
 
-                  <div className="space-y-4">
+                  {/*   <div className="space-y-4">
                     {loadingMatches ? (
                       <div className="flex justify-center py-10">
                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -1041,7 +1053,20 @@ export default function UnifiedDashboard() {
                         </Card>
                       ))
                     )}
-                  </div>
+                  </div> */}
+                  <Empty className="py-16">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <HeartHandshake className="h-8 w-8 text-red-700" />
+                      </EmptyMedia>
+                      <EmptyTitle className="text-lg font-semibold">
+                        No blood stock records found
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        You blood bank center found at the moment.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </TabsContent>
 
                 {/* Request History Tab */}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -21,6 +21,15 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarInitials } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Heart,
   ArrowLeft,
@@ -63,11 +72,10 @@ function LocationPicker({ position, setPosition, isEditing, setFormData }) {
         setPosition({ lat, lng });
 
         // Reverse geocode using Nominatim (OpenStreetMap)
-        fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
-        )
-          .then((res) => res.json())
-          .then((data) => {
+        api
+          .get(`/api/location/reverse?lat=${lat}&lon=${lng}`)
+          .then((res) => {
+            const data = res.data;
             const addr = data.address || {};
 
             setFormData((prev) => ({
@@ -97,8 +105,10 @@ function LocationPicker({ position, setPosition, isEditing, setFormData }) {
 }
 
 export default function ProfilePage() {
-  const { user } = useContext(AuthContext);
+  const { user, updateUser, isLoading: authLoading } = useContext(AuthContext);
   const [profile, setProfile] = useState(null);
+  const navigate = useNavigate();
+  const [showDialog, setShowDialog] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     // Personal Info
@@ -126,7 +136,21 @@ export default function ProfilePage() {
   });
   const [loading, setLoading] = useState(true);
 
+  const handleBackClick = () => {
+    if (!profile?.profile_completed) {
+      setShowDialog(true);
+    } else {
+      navigate(-1);
+    }
+  };
+
   useEffect(() => {
+    // 🆕 Wait for both auth and user to be loaded
+    if (authLoading || !user) {
+      console.log("Waiting for auth:", { authLoading, userExists: !!user });
+      return;
+    }
+
     const fetchProfile = async () => {
       try {
         const res = await api.get(`/api/users/${user.id}`);
@@ -152,25 +176,42 @@ export default function ProfilePage() {
           latitude: res.data.latitude || "",
           longitude: res.data.longitude || "",
         });
+        setLoading(false);
       } catch (err) {
         console.error("Failed to load profile:", err);
-      } finally {
+        toast.error("Failed to load profile");
         setLoading(false);
       }
     };
+
     fetchProfile();
-  }, [user.id]);
+  }, [authLoading, user]);
+
+  // 🆕 Show loading state while waiting
+  if (authLoading || loading || !user) {
+    console.log("Showing loading state:", {
+      authLoading,
+      loading,
+      userExists: !!user,
+    });
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleAddressSearch = async () => {
     if (!formData.searchQuery) return;
 
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          formData.searchQuery
-        )}&addressdetails=1`
+      const res = await api.get(
+        `/api/location/search?q=${encodeURIComponent(formData.searchQuery)}`
       );
-      const data = await res.json();
+      const data = res.data;
 
       if (data.length === 0) {
         alert("No results found. Please try again.");
@@ -227,6 +268,14 @@ export default function ProfilePage() {
 
       const res = await api.patch(`/api/users/${user.id}`, payload);
       setProfile(res.data.user);
+
+      updateUser({
+        profile_completed: true,
+        city: res.data.user.city,
+        province: res.data.user.province,
+        contact_number: res.data.user.contact_number,
+      });
+
       setIsEditing(false);
       toast.success("Profile updated successfully!", {
         description: "Your changes have been saved.",
@@ -246,18 +295,33 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showDialog} onOpenChange={setShowDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Complete Your Profile First</AlertDialogTitle>
+            <AlertDialogDescription>
+              New users must complete their profile before accessing the
+              dashboard. Please fill in all your information to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-3 justify-end pt-4">
+            <AlertDialogCancel>Continue Editing</AlertDialogCancel>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link
-                to="/dashboard"
+              <button
+                onClick={handleBackClick}
                 className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft className="h-5 w-5" />
                 <span className="hidden sm:inline">Back to Dashboard</span>
-              </Link>
+              </button>
               <div className="flex items-center gap-2">
                 <Heart className="h-8 w-8 text-primary" />
                 <h1 className="text-2xl font-bold text-foreground">

@@ -187,41 +187,81 @@ export const updateSchedule = async (req, res) => {
     if (status === "completed") {
       const donationResult = await client.query(
         `
-        INSERT INTO donations (donor_id, hospital_id, blood_type, donation_type, donation_date, status)
-        VALUES ($1, $2, $3, 'whole_blood', NOW(), 'completed')
-        RETURNING *
-        `,
+    INSERT INTO donations (donor_id, hospital_id, blood_type, donation_type, donation_date, status)
+    VALUES ($1, $2, $3, 'whole_blood', NOW(), 'completed')
+    RETURNING *
+    `,
         [schedule.donor_id, schedule.hospital_id, schedule.blood_type]
       );
 
       const donation = donationResult.rows[0];
 
-      // Notify donor
+      // ✅ UPDATE STOCK ( +1 unit from donation )
+      const addedUnits = 1;
+      const stockRes = await client.query(
+        `SELECT units_available FROM blood_stocks 
+     WHERE hospital_id = $1 AND blood_type = $2 
+     FOR UPDATE`,
+        [schedule.hospital_id, schedule.blood_type]
+      );
+
+      let newUnits = addedUnits;
+      if (stockRes.rows.length > 0) {
+        newUnits = Number(stockRes.rows[0].units_available) + addedUnits;
+        await client.query(
+          `UPDATE blood_stocks 
+       SET units_available = $1, last_updated = NOW()
+       WHERE hospital_id = $2 AND blood_type = $3`,
+          [newUnits, schedule.hospital_id, schedule.blood_type]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO blood_stocks (hospital_id, blood_type, units_available)
+       VALUES ($1, $2, $3)`,
+          [schedule.hospital_id, schedule.blood_type, newUnits]
+        );
+      }
+
+      // ✅ Track changes
+      await client.query(
+        `INSERT INTO inventory_history 
+     (hospital_id, blood_type, change, units_after, reason, changed_by)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          schedule.hospital_id,
+          schedule.blood_type,
+          addedUnits,
+          newUnits,
+          `Donation from schedule #${schedule.schedule_id}`,
+          sender_id,
+        ]
+      );
+
+      // ✅ Notify donor & hospital (same as before)
       await client.query(
         `
-        INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
-        VALUES ($1, $2, $3, $4, 'donation', $5)
-        `,
+    INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
+    VALUES ($1, $2, $3, $4, 'donation', $5)
+    `,
         [
           schedule.donor_id,
           sender_id,
           "Donation Completed 🎉",
-          `Your ${schedule.blood_type} donation has been marked as completed.`,
+          `Your ${schedule.blood_type} donation has been completed.`,
           donation.donation_id,
         ]
       );
 
-      // Notify hospital
       await client.query(
         `
-        INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
-        VALUES ($1, $2, $3, $4, 'donation', $5)
-        `,
+    INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
+    VALUES ($1, $2, $3, $4, 'donation', $5)
+    `,
         [
           schedule.hospital_id,
           sender_id,
-          "New Donation Recorded 🩸",
-          `A ${schedule.blood_type} blood donation has been completed by donor ID ${schedule.donor_id}.`,
+          "Blood Donation Added 🩸",
+          `A new ${schedule.blood_type} blood donation has been added to inventory.`,
           donation.donation_id,
         ]
       );

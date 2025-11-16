@@ -368,7 +368,7 @@ export default function DonationSchedulesTab() {
                                   onClick={() =>
                                     handleStatusChange(
                                       s.schedule_id,
-                                      "rejected"
+                                      "cancelled"
                                     )
                                   }
                                 >

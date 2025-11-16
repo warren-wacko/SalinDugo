@@ -24,7 +24,19 @@ import ProfilePage from "./views/user/profile/page";
 import { Toaster } from "sonner";
 
 function App() {
-  const { user } = useContext(AuthContext);
+  const { user, isLoading } = useContext(AuthContext);
+
+  // 🆕 Wait for auth to load
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -35,7 +47,7 @@ function App() {
           path="/"
           element={
             user ? (
-              // 🔹 If logged in → redirect to dashboard
+              // 🔹 ONLY check dashboard routing, NOT profile_completed
               (() => {
                 switch (user.role) {
                   case "user":
@@ -49,7 +61,6 @@ function App() {
                 }
               })()
             ) : (
-              // 🔹 If not logged in → show landing page
               <HomePage />
             )
           }

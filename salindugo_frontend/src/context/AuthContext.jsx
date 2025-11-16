@@ -7,17 +7,24 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load from localStorage on refresh
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const storedAccess = localStorage.getItem("accessToken");
-    const storedRefresh = localStorage.getItem("refreshToken");
+    try {
+      const storedUser = localStorage.getItem("user");
+      const storedAccess = localStorage.getItem("accessToken");
+      const storedRefresh = localStorage.getItem("refreshToken");
 
-    if (storedUser && storedAccess) {
-      setUser(JSON.parse(storedUser));
-      setAccessToken(storedAccess);
-      setRefreshToken(storedRefresh);
+      if (storedUser && storedAccess) {
+        setUser(JSON.parse(storedUser));
+        setAccessToken(storedAccess);
+        setRefreshToken(storedRefresh);
+      }
+    } catch (err) {
+      console.error("Error loading from localStorage:", err);
+    } finally {
+      setIsLoading(false); // 🆕 Set loading to false after attempting to load
     }
   }, []);
 
@@ -42,9 +49,24 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("refreshToken");
   };
 
+  // 🆕 Update user data in real-time
+  const updateUser = (updatedUserData) => {
+    const newUser = { ...user, ...updatedUserData };
+    setUser(newUser);
+    localStorage.setItem("user", JSON.stringify(newUser));
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, accessToken, refreshToken, login, logout }}
+      value={{
+        user,
+        accessToken,
+        refreshToken,
+        login,
+        logout,
+        updateUser,
+        isLoading,
+      }}
     >
       {children}
     </AuthContext.Provider>

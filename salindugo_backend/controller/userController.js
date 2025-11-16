@@ -50,11 +50,12 @@ export const updateUserProfile = async (req, res) => {
          zip_code = COALESCE($10, zip_code),
          latitude = COALESCE($11, latitude),
          longitude = COALESCE($12, longitude),
+         profile_completed = TRUE,
          updated_at = NOW()
        WHERE user_id = $13
        RETURNING user_id, full_name, email, blood_type, contact_number, 
                  weight, height, medical_conditions, allergies, address, 
-                 city, province, region, zip_code, latitude, longitude, updated_at`,
+                 city, province, region, zip_code, latitude, longitude, profile_completed, updated_at`,
       [
         contact_number,
         weight,

@@ -117,7 +117,7 @@ export const loginUser = async (req, res) => {
     );
 
     const refreshToken = jwt.sign(
-      { id: user.rows[0].user_id },
+      { id: user.rows[0].user_id, role: user.rows[0].role },
       process.env.JWT_REFRESH,
       { expiresIn: "7d" }
     );
@@ -142,6 +142,7 @@ export const loginUser = async (req, res) => {
         province: user.rows[0].province,
         contact_number: user.rows[0].contact_number,
         last_donation_date: user.rows[0].last_donation_date,
+        profile_completed: user.rows[0].profile_completed,
       },
     });
   } catch (err) {
@@ -176,6 +177,7 @@ export const refreshTokenHandler = async (req, res) => {
     const { refreshToken } = req.body;
     if (!refreshToken) return res.sendStatus(401);
 
+    // 🔍 Check if refresh token exists in DB
     const tokenRecord = await pool.query(
       "SELECT * FROM refresh_tokens WHERE token_hash=$1 AND revoked=false AND expires_at > NOW()",
       [refreshToken]
@@ -183,9 +185,11 @@ export const refreshTokenHandler = async (req, res) => {
 
     if (tokenRecord.rows.length === 0) return res.sendStatus(403);
 
+    // 🔍 Validate the refresh token signature
     jwt.verify(refreshToken, process.env.JWT_REFRESH, (err, decoded) => {
       if (err) return res.sendStatus(403);
 
+      // ❗ decoded MUST contain BOTH id and role
       const accessToken = jwt.sign(
         { id: decoded.id, role: decoded.role },
         process.env.JWT_SECRET,

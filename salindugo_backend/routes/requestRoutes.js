@@ -4,6 +4,7 @@ import {
   getRequestById,
   getUserRequests,
   updateRequest,
+  fulfillRequest,
 } from "../controller/requestController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 
@@ -20,5 +21,8 @@ router.get("/", authenticateToken, getUserRequests);
 
 // 🩸 Update or cancel a request
 router.patch("/:id", authenticateToken, updateRequest);
+
+// 🩸 Fulfill a request
+router.patch("/:id/fulfill", authenticateToken, fulfillRequest);
 
 export default router;

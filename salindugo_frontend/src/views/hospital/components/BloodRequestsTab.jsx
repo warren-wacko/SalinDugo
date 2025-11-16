@@ -76,7 +76,52 @@ export default function BloodRequestsTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [cancelDialog, setCancelDialog] = useState({ open: false, id: null });
+  const [fulfillDialog, setFulfillDialog] = useState({
+    open: false,
+    request: null,
+    stock: null,
+    units: 1,
+  });
+
   const itemsPerPage = 5;
+
+  const openFulfillDialog = async (req) => {
+    try {
+      const res = await api.get("/api/stocks"); // fetch current hospital stock
+      const stock = res.data.find((s) => s.blood_type === req.blood_type);
+
+      setFulfillDialog({
+        open: true,
+        request: req,
+        stock: stock || { units_available: 0 },
+        units: req.units_needed,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load stock info");
+    }
+  };
+
+  const fulfillRequest = async () => {
+    const { request, units } = fulfillDialog;
+    try {
+      setUpdatingId(request.request_id);
+
+      await api.patch(`/api/requests/${request.request_id}/fulfill`, {
+        units: Number(units),
+      });
+
+      toast.success("Request fulfilled successfully! ✅");
+
+      setFulfillDialog({ open: false, request: null, stock: null, units: 1 });
+      await fetchRequests(); // refresh table
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Failed to fulfill request");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   // ✅ Fetch requests
   const fetchRequests = async () => {
@@ -101,7 +146,6 @@ export default function BloodRequestsTab() {
       setUpdatingId(requestId);
       await api.patch(`/api/requests/${requestId}`, { status: newStatus });
 
-      // ✅ Toasts with more human, encouraging tone
       if (newStatus === "open") {
         toast.success("Request Reopened", {
           description:
@@ -394,13 +438,12 @@ export default function BloodRequestsTab() {
                               Matched
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() =>
-                                handleStatusUpdate(req.request_id, "fulfilled")
-                              }
+                              onClick={() => openFulfillDialog(req)}
                             >
                               <Package className="mr-2 h-4 w-4 text-sky-600" />
-                              Fulfilled
+                              Fulfill Request
                             </DropdownMenuItem>
+
                             {req.status === "open" && (
                               <DropdownMenuItem
                                 onClick={() => handleCancel(req.request_id)}
@@ -514,6 +557,93 @@ export default function BloodRequestsTab() {
                 }}
               >
                 Yes, cancel it
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={fulfillDialog.open}
+          onOpenChange={(open) =>
+            !open &&
+            setFulfillDialog({
+              open: false,
+              request: null,
+              stock: null,
+              units: 1,
+            })
+          }
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Fulfill Blood Request 🏥</AlertDialogTitle>
+              <AlertDialogDescription>
+                Provide <strong>{fulfillDialog.request?.units_needed}</strong>{" "}
+                requested unit(s) of{" "}
+                <strong>{fulfillDialog.request?.blood_type}</strong>.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            {fulfillDialog.stock && (
+              <div className="mt-3 space-y-2 text-sm border p-3 rounded-lg">
+                <div className="flex justify-between">
+                  <span>Available Stock:</span>
+                  <span className="font-semibold">
+                    {fulfillDialog.stock.units_available} units
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Units to Fulfill:
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max={fulfillDialog.stock.units_available}
+                    value={fulfillDialog.units}
+                    onChange={(e) =>
+                      setFulfillDialog({
+                        ...fulfillDialog,
+                        units: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                {fulfillDialog.stock.units_available <
+                  fulfillDialog.request?.units_needed && (
+                  <p className="text-xs text-amber-600 font-medium">
+                    Warning: Not enough stock to fully fulfill this request.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() =>
+                  setFulfillDialog({
+                    open: false,
+                    request: null,
+                    stock: null,
+                    units: 1,
+                  })
+                }
+              >
+                Cancel
+              </AlertDialogCancel>
+
+              <AlertDialogAction
+                className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
+                disabled={updatingId === fulfillDialog.request?.request_id}
+                onClick={fulfillRequest}
+              >
+                {updatingId === fulfillDialog.request?.request_id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Fulfill Request"
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

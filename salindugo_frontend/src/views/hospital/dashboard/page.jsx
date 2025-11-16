@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, Suspense, lazy } from "react";
+import { useState, useContext, Suspense, lazy } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,32 +18,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Heart,
   MapPin,
-  Clock,
   Activity,
   TrendingUp,
   TrendingDown,
-  AlertTriangle,
-  Filter,
-  BarChart3,
   Building2,
   Phone,
-  Download,
-  Loader2,
 } from "lucide-react";
-
 import Navbar from "../../../components/ui/navbar";
 const BloodRequestsTab = lazy(() => import("../components/BloodRequestsTab"));
 const DonationSchedulesTab = lazy(() =>
   import("../components/DonationSchedulesTab")
 );
+const InventoryTab = lazy(() => import("../components/InventoryTab"));
+const InventoryHistoryTab = lazy(() =>
+  import("../components/InventoryHistoryTab")
+);
 import BloodDropLoader from "../../../utils/bloodDropLoader";
+import { AuthContext } from "../../../context/AuthContext";
 export default function HospitalDashboard() {
   const [selectedTimeRange, setSelectedTimeRange] = useState("7d");
-  const [selectedLocation, setSelectedLocation] = useState("all");
-  const [loading, setLoading] = useState(true);
-
+  const { accessToken } = useContext(AuthContext);
   // Mock data
   const hospitalProfile = {
     name: "St. Mary's Hospital",
@@ -54,89 +49,6 @@ export default function HospitalDashboard() {
     contactPerson: "Dr. Maria Cruz",
     phone: "+63 2 8123 4567",
   };
-
-  const bloodStock = [
-    {
-      bloodType: "O+",
-      currentUnits: 45,
-      minimumRequired: 50,
-      maximumCapacity: 100,
-      expiringIn7Days: 8,
-      status: "Low",
-      trend: "decreasing",
-      lastUpdated: "2 hours ago",
-    },
-    {
-      bloodType: "O-",
-      currentUnits: 12,
-      minimumRequired: 25,
-      maximumCapacity: 50,
-      expiringIn7Days: 2,
-      status: "Critical",
-      trend: "decreasing",
-      lastUpdated: "1 hour ago",
-    },
-    {
-      bloodType: "A+",
-      currentUnits: 78,
-      minimumRequired: 40,
-      maximumCapacity: 80,
-      expiringIn7Days: 5,
-      status: "Good",
-      trend: "stable",
-      lastUpdated: "30 minutes ago",
-    },
-    {
-      bloodType: "A-",
-      currentUnits: 22,
-      minimumRequired: 20,
-      maximumCapacity: 40,
-      expiringIn7Days: 3,
-      status: "Good",
-      trend: "increasing",
-      lastUpdated: "1 hour ago",
-    },
-    {
-      bloodType: "B+",
-      currentUnits: 35,
-      minimumRequired: 30,
-      maximumCapacity: 60,
-      expiringIn7Days: 4,
-      status: "Good",
-      trend: "stable",
-      lastUpdated: "45 minutes ago",
-    },
-    {
-      bloodType: "B-",
-      currentUnits: 8,
-      minimumRequired: 15,
-      maximumCapacity: 30,
-      expiringIn7Days: 1,
-      status: "Low",
-      trend: "decreasing",
-      lastUpdated: "2 hours ago",
-    },
-    {
-      bloodType: "AB+",
-      currentUnits: 18,
-      minimumRequired: 15,
-      maximumCapacity: 30,
-      expiringIn7Days: 2,
-      status: "Good",
-      trend: "stable",
-      lastUpdated: "1 hour ago",
-    },
-    {
-      bloodType: "AB-",
-      currentUnits: 5,
-      minimumRequired: 10,
-      maximumCapacity: 20,
-      expiringIn7Days: 1,
-      status: "Low",
-      trend: "decreasing",
-      lastUpdated: "3 hours ago",
-    },
-  ];
 
   const demandForecasting = [
     {
@@ -170,116 +82,6 @@ export default function HospitalDashboard() {
       recommendedOrder: 10,
       confidence: 90,
       model: "LSTM",
-    },
-  ];
-
-  const availableDonors = [
-    {
-      id: 1,
-      initials: "JD",
-      bloodType: "O-",
-      distance: "1.2 km",
-      lastDonation: "2023-12-15",
-      totalDonations: 12,
-      availability: "Available now",
-      compatibilityScore: 98,
-      verified: true,
-    },
-    {
-      id: 2,
-      initials: "MS",
-      bloodType: "O+",
-      distance: "2.8 km",
-      lastDonation: "2024-01-10",
-      totalDonations: 8,
-      availability: "Available today",
-      compatibilityScore: 95,
-      verified: true,
-    },
-    {
-      id: 3,
-      initials: "AR",
-      bloodType: "B-",
-      distance: "3.5 km",
-      lastDonation: "2023-11-20",
-      totalDonations: 15,
-      availability: "Available tomorrow",
-      compatibilityScore: 92,
-      verified: true,
-    },
-  ];
-
-  const recentTransactions = [
-    {
-      id: 1,
-      type: "Donation",
-      bloodType: "A+",
-      units: 1,
-      donor: "Anonymous",
-      timestamp: "2024-02-20 14:30",
-      status: "Processed",
-    },
-    {
-      id: 2,
-      type: "Transfusion",
-      bloodType: "O-",
-      units: 2,
-      recipient: "Patient #1234",
-      timestamp: "2024-02-20 12:15",
-      status: "Completed",
-    },
-    {
-      id: 3,
-      type: "Transfer In",
-      bloodType: "B+",
-      units: 5,
-      source: "Philippine Red Cross",
-      timestamp: "2024-02-20 09:45",
-      status: "Received",
-    },
-    {
-      id: 4,
-      type: "Expired",
-      bloodType: "AB-",
-      units: 1,
-      reason: "Past expiration date",
-      timestamp: "2024-02-20 08:00",
-      status: "Disposed",
-    },
-  ];
-
-  const notifications = [
-    {
-      id: 1,
-      type: "critical",
-      title: "Critical Stock Alert",
-      message: "O- blood stock below minimum threshold (12/25 units)",
-      time: "15 minutes ago",
-      read: false,
-    },
-    {
-      id: 2,
-      type: "expiring",
-      title: "Units Expiring Soon",
-      message: "8 units of O+ blood expiring in 2 days",
-      time: "1 hour ago",
-      read: false,
-    },
-    {
-      id: 3,
-      type: "request",
-      title: "Urgent Transfusion Request",
-      message: "Emergency department requesting 3 units of AB+ blood",
-      time: "2 hours ago",
-      read: true,
-    },
-    {
-      id: 4,
-      type: "forecast",
-      title: "Predicted Shortage Alert",
-      message: "AI model predicts O- shortage in 24 hours",
-      time: "3 hours ago",
-      read: false,
     },
   ];
 
@@ -391,8 +193,8 @@ export default function HospitalDashboard() {
                 <TabsTrigger value="requests">Requests</TabsTrigger>
                 <TabsTrigger value="donors">Donation Schedules</TabsTrigger>
                 <TabsTrigger value="inventory">Inventory</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
                 <TabsTrigger value="forecasting">Forecasting</TabsTrigger>
-                <TabsTrigger value="analytics">Analytics</TabsTrigger>
                 <TabsTrigger value="alerts">Alerts</TabsTrigger>
               </TabsList>
 
@@ -410,150 +212,9 @@ export default function HospitalDashboard() {
 
               {/* Blood Stock Monitoring Tab */}
               <TabsContent value="inventory" className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold">
-                      Blood Stock Monitoring
-                    </h2>
-                    <p className="text-muted-foreground">
-                      Real-time inventory levels and status
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Filter className="h-4 w-4 mr-2" />
-                      Filter
-                    </Button>
-                    <Button size="sm">
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {bloodStock.map((stock) => (
-                    <Card
-                      key={stock.bloodType}
-                      className="hover:shadow-md transition-shadow"
-                    >
-                      <CardContent className="p-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-bold">
-                              {stock.bloodType}
-                            </h3>
-                            <Badge
-                              className={getStockStatusColor(stock.status)}
-                            >
-                              {stock.status}
-                            </Badge>
-                          </div>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span>Current Stock</span>
-                              <span className="font-medium">
-                                {stock.currentUnits}/{stock.maximumCapacity}
-                              </span>
-                            </div>
-                            <Progress
-                              value={
-                                (stock.currentUnits / stock.maximumCapacity) *
-                                100
-                              }
-                              className="h-2"
-                            />
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>Min: {stock.minimumRequired}</span>
-                              <span>Max: {stock.maximumCapacity}</span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span>Expiring (7d):</span>
-                              <span className="font-medium">
-                                {stock.expiringIn7Days} units
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span>Trend:</span>
-                              <div className="flex items-center gap-1">
-                                {getTrendIcon(stock.trend)}
-                                <span className="capitalize">
-                                  {stock.trend}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-muted-foreground">
-                              Updated {stock.lastUpdated}
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent Transactions</CardTitle>
-                    <CardDescription>
-                      Latest blood bank activities
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {recentTransactions.map((transaction) => (
-                        <div
-                          key={transaction.id}
-                          className="flex items-center justify-between py-2 border-b"
-                        >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">
-                                {transaction.type}
-                              </Badge>
-                              <span className="font-medium">
-                                {transaction.bloodType}
-                              </span>
-                              <span className="text-sm text-muted-foreground">
-                                {transaction.units} unit
-                                {transaction.units > 1 ? "s" : ""}
-                              </span>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {transaction.donor ||
-                                transaction.recipient ||
-                                transaction.source ||
-                                transaction.reason}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {transaction.timestamp}
-                            </div>
-                          </div>
-                          <Badge
-                            variant={
-                              transaction.status === "Completed"
-                                ? "default"
-                                : "secondary"
-                            }
-                            className={
-                              transaction.status === "Completed"
-                                ? "bg-green-500 text-white"
-                                : transaction.status === "Disposed"
-                                ? "bg-red-500 text-white"
-                                : ""
-                            }
-                          >
-                            {transaction.status}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                <Suspense fallback={<BloodDropLoader />}>
+                  <InventoryTab accessToken={accessToken} />
+                </Suspense>
               </TabsContent>
 
               {/* Demand Forecasting Tab */}
@@ -683,191 +344,15 @@ export default function HospitalDashboard() {
                 </Card>
               </TabsContent>
 
-              {/* Analytics Tab */}
-              <TabsContent value="analytics" className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">Reporting & Analytics</h2>
-                  <p className="text-muted-foreground">
-                    Comprehensive data insights and trends
-                  </p>
-                </div>
-
-                <div className="grid md:grid-cols-4 gap-4">
-                  <Card>
-                    <CardContent className="p-6 text-center">
-                      <div className="text-3xl font-bold text-primary">245</div>
-                      <p className="text-sm text-muted-foreground">
-                        Total Units in Stock
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-6 text-center">
-                      <div className="text-3xl font-bold text-green-500">
-                        89
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Units Donated (7d)
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-6 text-center">
-                      <div className="text-3xl font-bold text-blue-500">
-                        156
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Units Transfused (7d)
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-6 text-center">
-                      <div className="text-3xl font-bold text-orange-500">
-                        12
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Units Expired (7d)
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Blood Type Distribution</CardTitle>
-                      <CardDescription>
-                        Current inventory breakdown
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {bloodStock.slice(0, 4).map((stock) => (
-                          <div
-                            key={stock.bloodType}
-                            className="flex items-center justify-between"
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full bg-primary"></div>
-                              <span className="font-medium">
-                                {stock.bloodType}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold">
-                                {stock.currentUnits}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {((stock.currentUnits / 245) * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Monthly Trends</CardTitle>
-                      <CardDescription>
-                        Donations vs Transfusions
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm">Donations</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-20 h-2 bg-green-200 rounded">
-                              <div className="w-16 h-2 bg-green-500 rounded"></div>
-                            </div>
-                            <span className="text-sm font-medium">356</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm">Transfusions</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-20 h-2 bg-blue-200 rounded">
-                              <div className="w-14 h-2 bg-blue-500 rounded"></div>
-                            </div>
-                            <span className="text-sm font-medium">298</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm">Expired</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-20 h-2 bg-red-200 rounded">
-                              <div className="w-3 h-2 bg-red-500 rounded"></div>
-                            </div>
-                            <span className="text-sm font-medium">23</span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+              {/* History Tab */}
+              <TabsContent value="history" className="space-y-6">
+                <Suspense fallback={<BloodDropLoader />}>
+                  <InventoryHistoryTab accessToken={accessToken} />
+                </Suspense>
               </TabsContent>
 
               {/* Alerts Tab */}
-              <TabsContent value="alerts" className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">System Alerts</h2>
-                  <p className="text-muted-foreground">
-                    Critical notifications and system updates
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  {notifications.map((notification) => (
-                    <Card
-                      key={notification.id}
-                      className={!notification.read ? "border-primary/50" : ""}
-                    >
-                      <CardContent className="p-6">
-                        <div className="flex items-start gap-4">
-                          <div className="mt-1">
-                            {notification.type === "critical" && (
-                              <AlertTriangle className="h-5 w-5 text-destructive" />
-                            )}
-                            {notification.type === "expiring" && (
-                              <Clock className="h-5 w-5 text-orange-500" />
-                            )}
-                            {notification.type === "request" && (
-                              <Heart className="h-5 w-5 text-primary" />
-                            )}
-                            {notification.type === "forecast" && (
-                              <BarChart3 className="h-5 w-5 text-blue-500" />
-                            )}
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold">
-                                {notification.title}
-                              </h3>
-                              {!notification.read && (
-                                <Badge variant="secondary">New</Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {notification.message}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {notification.time}
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            {notification.type === "critical"
-                              ? "Take Action"
-                              : "View Details"}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
+              <TabsContent value="alerts" className="space-y-6"></TabsContent>
             </Tabs>
           </div>
         </div>

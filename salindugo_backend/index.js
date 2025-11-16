@@ -11,6 +11,8 @@ import donationRoutes from "./routes/donationRoutes.js";
 import scheduleRoutes from "./routes/scheduleRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import matchingRoutes from "./routes/matchingRoutes.js";
+import inventoryRoutes from "./routes/inventoryRoutes.js";
+import locationRoutes from "./routes/locationRoutes.js";
 
 const app = express();
 dotenv.config();
@@ -26,6 +28,8 @@ app.use("/api/donations", donationRoutes);
 app.use("/api/schedules", scheduleRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/matching", matchingRoutes);
+app.use("/api/stocks", inventoryRoutes);
+app.use("/api/location", locationRoutes);
 
 app.get("/", (req, res) => {
   res.send("API is running...");
