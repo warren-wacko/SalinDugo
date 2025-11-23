@@ -3,6 +3,7 @@ import express from "express";
 import {
   getMatchesForDonor,
   getMatchesForHospitalRequest,
+  getMatchesForRecipient,
 } from "../controller/matchingController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js"; // your auth middleware
 
@@ -17,5 +18,7 @@ router.get(
   authenticateToken,
   getMatchesForHospitalRequest
 );
+
+router.get("/recipient", authenticateToken, getMatchesForRecipient);
 
 export default router;

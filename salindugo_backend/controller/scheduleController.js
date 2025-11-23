@@ -118,6 +118,132 @@ export const getSchedules = async (req, res) => {
 };
 
 // ==========================================
+// 🆕 GET /api/schedules/pending/:donor_id → Check pending schedules
+// ==========================================
+export const getPendingSchedule = async (req, res) => {
+  try {
+    const { donor_id } = req.params;
+
+    // 🆕 UPDATED: Include hospital location data
+    const result = await pool.query(
+      `
+      SELECT 
+        s.*,
+        h.full_name AS hospital_name,
+        h.address,
+        h.latitude,
+        h.longitude,
+        h.contact_number
+      FROM donation_schedules s
+      JOIN users h ON s.hospital_id = h.user_id
+      WHERE s.donor_id = $1 AND s.status IN ('pending', 'approved')
+      LIMIT 1
+      `,
+      [donor_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ hasPending: false, schedule: null });
+    }
+
+    res.json({ hasPending: true, schedule: result.rows[0] });
+  } catch (err) {
+    console.error("Error checking pending schedules:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// ==========================================
+// 🆕 DELETE /api/schedules/:id → Cancel schedule
+// ==========================================
+export const cancelSchedule = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const { id: user_id } = req.user;
+
+    await client.query("BEGIN");
+
+    // Get the schedule
+    const scheduleRes = await client.query(
+      `SELECT * FROM donation_schedules WHERE schedule_id = $1`,
+      [id]
+    );
+
+    if (scheduleRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Schedule not found" });
+    }
+
+    const schedule = scheduleRes.rows[0];
+
+    // 🆕 Check if user is donor or hospital
+    if (schedule.donor_id !== user_id && schedule.hospital_id !== user_id) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        message: "You do not have permission to cancel this schedule",
+      });
+    }
+
+    // 🆕 Can only cancel pending or approved schedules
+    if (!["pending", "approved"].includes(schedule.status)) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        message: `Cannot cancel a ${schedule.status} schedule`,
+      });
+    }
+
+    // Update status to cancelled
+    const updatedRes = await client.query(
+      `
+      UPDATE donation_schedules
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE schedule_id = $1
+      RETURNING *
+      `,
+      [id]
+    );
+
+    const updatedSchedule = updatedRes.rows[0];
+
+    // 🆕 Notify the other party
+    const notificationTitle =
+      schedule.donor_id === user_id
+        ? "Donation Schedule Cancelled by Donor"
+        : "Donation Schedule Cancelled by Hospital";
+
+    const notificationMessage =
+      schedule.donor_id === user_id
+        ? `Your scheduled ${schedule.blood_type} donation appointment on ${schedule.scheduled_date} has been cancelled by the donor.`
+        : `The scheduled ${schedule.blood_type} blood donation on ${schedule.scheduled_date} has been cancelled by the hospital.`;
+
+    const recipientId =
+      schedule.donor_id === user_id ? schedule.hospital_id : schedule.donor_id;
+
+    await client.query(
+      `
+      INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
+      VALUES ($1, $2, $3, $4, 'schedule', $5)
+      `,
+      [recipientId, user_id, notificationTitle, notificationMessage, id]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Schedule cancelled successfully",
+      schedule: updatedSchedule,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Error cancelling schedule:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+// ==========================================
 // PATCH /api/schedules/:id → Update schedule status or remarks
 // ==========================================
 export const updateSchedule = async (req, res) => {
@@ -225,8 +351,8 @@ export const updateSchedule = async (req, res) => {
       // ✅ Track changes
       await client.query(
         `INSERT INTO inventory_history 
-     (hospital_id, blood_type, change, units_after, reason, changed_by)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+     (hospital_id, blood_type, change, units_after, reason, changed_by, donor_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           schedule.hospital_id,
           schedule.blood_type,
@@ -234,6 +360,7 @@ export const updateSchedule = async (req, res) => {
           newUnits,
           `Donation from schedule #${schedule.schedule_id}`,
           sender_id,
+          schedule.donor_id,
         ]
       );
 

@@ -97,46 +97,175 @@ export const getRequestById = async (req, res) => {
 };
 
 // ==========================================
+// GET /api/requests/pending/:userId → Get pending request
+// ==========================================
+export const getPendingRequest = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT 
+        r.request_id,
+        r.requester_id,
+        r.hospital_id,
+        r.blood_type,
+        r.units_needed,
+        r.urgency_level,
+        r.status,
+        r.request_date,
+        u.full_name AS hospital_name,
+        u.address,
+        u.contact_number,
+        u.latitude,
+        u.longitude
+      FROM requests r
+      JOIN users u ON r.hospital_id = u.user_id
+      WHERE r.requester_id = $1 
+        AND r.status IN ('open', 'matched')
+      ORDER BY r.request_date DESC
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ request: null });
+    }
+
+    res.json({ request: result.rows[0] });
+  } catch (err) {
+    console.error("Error fetching pending request:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// ==========================================
+// DELETE /api/requests/:id → Cancel request
+// ==========================================
+export const cancelRequest = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const user_id = req.user.id;
+
+    await client.query("BEGIN");
+
+    // 1️⃣ Fetch request
+    const requestRes = await client.query(
+      `SELECT * FROM requests WHERE request_id = $1`,
+      [id]
+    );
+
+    if (requestRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    const request = requestRes.rows[0];
+
+    // 2️⃣ Verify authorization (only requester can cancel)
+    if (request.requester_id !== user_id) {
+      await client.query("ROLLBACK");
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to cancel this request" });
+    }
+
+    // 3️⃣ Prevent cancelling already fulfilled requests
+    if (request.status === "fulfilled") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        message: `Cannot cancel request with status "${request.status}"`,
+      });
+    }
+
+    // 4️⃣ Update request status
+    await client.query(
+      `UPDATE requests 
+       SET status = 'cancelled', request_date = NOW()
+       WHERE request_id = $1`,
+      [id]
+    );
+
+    // 5️⃣ Get hospital details for notification
+    const hospitalRes = await client.query(
+      `SELECT full_name FROM users WHERE user_id = $1`,
+      [request.hospital_id]
+    );
+    const hospitalName = hospitalRes.rows[0]?.full_name || "Blood Center";
+
+    // 6️⃣ Notify hospital
+    await client.query(
+      `INSERT INTO notifications 
+       (user_id, sender_id, title, message, type, related_id)
+       VALUES ($1, $2, 'Request Cancelled ❌', 
+       'A blood request for ${request.blood_type} has been cancelled by the patient.', 
+       'request', $3)`,
+      [request.hospital_id, user_id, id]
+    );
+
+    // 7️⃣ Notify requester
+    await client.query(
+      `INSERT INTO notifications 
+       (user_id, sender_id, title, message, type, related_id)
+       VALUES ($1, $2, 'Request Cancelled', 
+       'Your blood request for ${request.blood_type} has been cancelled.', 
+       'request', $3)`,
+      [user_id, request.hospital_id, id]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Request cancelled successfully",
+      request_id: id,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Error cancelling request:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+// ==========================================
 // GET /api/requests → Get all user requests
 // ==========================================
 export const getUserRequests = async (req, res) => {
   try {
-    const { id, role } = req.user;
+    const { userId } = req.params;
 
-    let result;
-    if (role === "hospital") {
-      result = await pool.query(
-        `
-        SELECT 
-          r.*, 
-          u.full_name AS requester_name,
-          h.full_name AS hospital_name
-        FROM requests r
-        JOIN users u ON r.requester_id = u.user_id
-        JOIN users h ON r.hospital_id = h.user_id
-        WHERE r.hospital_id = $1
-        ORDER BY r.request_date DESC
-        `,
-        [id]
-      );
-    } else {
-      result = await pool.query(
-        `
-        SELECT 
-          r.*, 
-          h.full_name AS hospital_name
-        FROM requests r
-        JOIN users h ON r.hospital_id = h.user_id
-        WHERE r.requester_id = $1
-        ORDER BY r.request_date DESC
-        `,
-        [id]
-      );
-    }
+    const result = await pool.query(
+      `
+      SELECT 
+        r.request_id,
+        r.requester_id,
+        r.hospital_id,
+        r.blood_type,
+        r.units_needed,
+        r.urgency_level,
+        r.status,
+        r.request_date,
+        u.full_name AS hospital_name,
+        u.address,
+        u.city,
+        u.province,
+        u.contact_number,
+        u.latitude,
+        u.longitude
+      FROM requests r
+      JOIN users u ON r.hospital_id = u.user_id
+      WHERE r.requester_id = $1
+      ORDER BY r.request_date DESC
+      `,
+      [userId]
+    );
 
-    res.json(result.rows);
+    res.json({ requests: result.rows });
   } catch (err) {
-    console.error("Error fetching requests:", err);
+    console.error("Error fetching user requests:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
@@ -326,14 +455,15 @@ export const fulfillRequest = async (req, res) => {
     // ✅ 4️⃣ Log history
     await client.query(
       `INSERT INTO inventory_history 
-       (hospital_id, blood_type, change, units_after, reason, changed_by)
-       VALUES ($1, $2, $3, $4, 'request_fulfilled', $5)`,
+       (hospital_id, blood_type, change, units_after, reason, changed_by, recipient_id)
+       VALUES ($1, $2, $3, $4, 'request_fulfilled', $5, $6)`,
       [
         hospital_id,
         request.blood_type,
         -request.units_needed,
         updatedStock,
         hospital_id,
+        request.requester_id,
       ]
     );
 
@@ -371,5 +501,38 @@ export const fulfillRequest = async (req, res) => {
       .json({ message: "Server error", error: err.message });
   } finally {
     client.release();
+  }
+};
+
+// ==========================================
+// GET /api/requests → Get all requests for the logged-in hospital
+// ==========================================
+export const getAllRequests = async (req, res) => {
+  try {
+    const hospital_id = req.user.id; // hospital logged in
+
+    const result = await pool.query(
+      `
+      SELECT 
+        r.request_id,
+        r.request_date,
+        r.requester_id,
+        u.full_name AS requester_name,
+        r.blood_type,
+        r.units_needed,
+        r.urgency_level,
+        r.status
+      FROM requests r
+      JOIN users u ON r.requester_id = u.user_id
+      WHERE r.hospital_id = $1
+      ORDER BY r.request_date DESC
+      `,
+      [hospital_id]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching requests:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };

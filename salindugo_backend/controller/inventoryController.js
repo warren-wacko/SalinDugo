@@ -166,7 +166,7 @@ export const fulfillDonation = async (req, res) => {
     // ✅ Notify hospital
     await pool.query(
       `INSERT INTO notifications (user_id, message, type)
-       VALUES ($1, $2, 'donation_received')`,
+       VALUES ($1, $2, 'donation')`,
       [
         hospital_id,
         `✅ Donation received: +${units_given} units of ${request.blood_type}`,
@@ -180,5 +180,134 @@ export const fulfillDonation = async (req, res) => {
     await pool.query("ROLLBACK");
     console.error("fulfillDonation error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ----------------------------------------------------
+// 📌 Create walk-in donor + donation + update inventory
+// ----------------------------------------------------
+import bcrypt from "bcryptjs";
+
+export const createWalkInDonation = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const hospital_id = req.user.id;
+    const {
+      full_name,
+      age,
+      gender,
+      blood_type,
+      units,
+      contact_number,
+      address,
+      date_of_birth,
+      middle_initial,
+      title,
+      role = "user",
+      civil_status,
+    } = req.body;
+
+    if (!full_name || !blood_type || !units) {
+      return res.status(400).json({
+        message: "Missing required fields (name, blood type, units).",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    // 🔹 Auto-generate email & password
+    const email =
+      full_name.toLowerCase().replace(/\s+/g, "") +
+      Math.floor(Math.random() * 1000) +
+      "@example.com"; // e.g., johndoe123@example.com
+    const plainPassword = Math.random().toString(36).slice(-8); // 8-char password
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+    // 🔹 Create walk-in donor user
+    const donorRes = await client.query(
+      `INSERT INTO users 
+        (full_name, email, password_hash, age, gender, blood_type, role, is_walk_in, created_by_hospital,
+         contact_number, address, date_of_birth, middle_initial, title, civil_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING user_id`,
+      [
+        full_name,
+        email,
+        hashedPassword,
+        age || null,
+        gender || null,
+        blood_type,
+        role,
+        hospital_id,
+        contact_number || null,
+        address || null,
+        date_of_birth || null,
+        middle_initial || null,
+        title || null,
+        civil_status,
+      ]
+    );
+
+    const donor_id = donorRes.rows[0].user_id;
+
+    // 🔹 Insert donation record
+    const donationRes = await client.query(
+      `INSERT INTO donations 
+         (donor_id, hospital_id, blood_type, donation_type, donation_date, status)
+       VALUES ($1, $2, $3, 'whole_blood', NOW(), 'completed')
+       RETURNING donation_id`,
+      [donor_id, hospital_id, blood_type]
+    );
+
+    // 🔹 Update blood stocks
+    const stockRes = await client.query(
+      `INSERT INTO blood_stocks (hospital_id, blood_type, units_available)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (hospital_id, blood_type)
+       DO UPDATE SET 
+         units_available = blood_stocks.units_available + EXCLUDED.units_available,
+         last_updated = NOW()
+       RETURNING units_available`,
+      [hospital_id, blood_type, units]
+    );
+
+    const new_units_after = stockRes.rows[0].units_available;
+
+    // 🔹 Insert inventory history with donor_id
+    await client.query(
+      `INSERT INTO inventory_history
+         (hospital_id, blood_type, change, units_after, reason, changed_by, donor_id)
+       VALUES ($1, $2, $3, $4, 'Walk-in Donation', $5, $6)`,
+      [hospital_id, blood_type, units, new_units_after, req.user.id, donor_id]
+    );
+
+    // 🔹 Low stock notification
+    if (new_units_after < 5) {
+      await client.query(
+        `INSERT INTO notifications (user_id, message, type)
+         VALUES ($1, $2, 'system')`,
+        [
+          hospital_id,
+          `⚠️ Low stock alert: ${blood_type} has only ${new_units_after} units left.`,
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Walk-in donation recorded successfully",
+      donation_id: donationRes.rows[0].donation_id,
+      donor_id,
+      email, // return credentials to hospital
+      password: plainPassword,
+      units_available: new_units_after,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("createWalkInDonation error:", err);
+    res.status(500).json({ message: "Server error" });
+  } finally {
+    client.release();
   }
 };

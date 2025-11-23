@@ -32,7 +32,7 @@ export const checkLowStockAndNotify = async (hospital_id, blood_type) => {
     `
     INSERT INTO notifications
     (user_id, sender_id, title, message, type, related_id)
-    VALUES ($1, $2, $3, $4, 'inventory', NULL)
+    VALUES ($1, $2, $3, $4, 'general', NULL)
     `,
     [
       hospital_id,
