@@ -1,13 +1,27 @@
 import pool from "../db.js";
+import { logAudit } from "../utils/auditLogger.js";
 
 // 📌 Fetch stock for a specific hospital
 export const getHospitalStock = async (req, res) => {
   try {
     const hospital_id = req.user.id;
 
-    // Check if hospital already has stock rows
+    // Query existing stock with bag IDs
     const existing = await pool.query(
-      `SELECT * FROM blood_stocks WHERE hospital_id = $1 ORDER BY blood_type`,
+      `
+      SELECT bs.*,
+             COALESCE(
+               ARRAY_AGG(bb.bag_id) FILTER (WHERE bb.bag_id IS NOT NULL),
+               '{}'
+             ) AS bag_ids
+      FROM blood_stocks bs
+      LEFT JOIN blood_bags bb 
+             ON bb.hospital_id = bs.hospital_id 
+             AND bb.blood_type = bs.blood_type
+      WHERE bs.hospital_id = $1
+      GROUP BY bs.stock_id
+      ORDER BY bs.blood_type
+      `,
       [hospital_id]
     );
 
@@ -15,7 +29,7 @@ export const getHospitalStock = async (req, res) => {
       return res.json(existing.rows);
     }
 
-    // ✅ Auto-create 8 standard blood types if none exist
+    // Auto-create 8 standard blood types if none exist
     const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
     const insertQuery = `
       INSERT INTO blood_stocks (hospital_id, blood_type, units_available, last_updated)
@@ -25,7 +39,10 @@ export const getHospitalStock = async (req, res) => {
 
     const result = await pool.query(insertQuery, [hospital_id, ...bloodTypes]);
 
-    return res.json(result.rows);
+    // Include bag_ids (empty arrays since no bags yet)
+    const stocksWithBags = result.rows.map((row) => ({ ...row, bag_ids: [] }));
+
+    return res.json(stocksWithBags);
   } catch (err) {
     console.error("getHospitalStock error:", err);
     res.status(500).json({ message: "Server error" });
@@ -90,6 +107,13 @@ export const updateStock = async (req, res) => {
 
     await pool.query("COMMIT");
 
+    await logAudit(hospital_id, "update_stock", "inventory", {
+      blood_type,
+      units_change,
+      units_after: newUnits,
+      reason,
+    });
+
     res.json({
       message: "Stock updated successfully",
       units_available: newUnits,
@@ -107,9 +131,17 @@ export const getInventoryHistory = async (req, res) => {
     const hospital_id = req.user.id;
 
     const history = await pool.query(
-      `SELECT * FROM inventory_history
-       WHERE hospital_id = $1
-       ORDER BY changed_at DESC`,
+      `
+      SELECT 
+        ih.*,
+        bb.status AS bag_status,
+        bb.created_at AS bag_created_at
+      FROM inventory_history ih
+      LEFT JOIN blood_bags bb
+        ON ih.bag_id = bb.bag_id
+      WHERE ih.hospital_id = $1
+      ORDER BY ih.changed_at DESC
+      `,
       [hospital_id]
     );
 
@@ -120,65 +152,39 @@ export const getInventoryHistory = async (req, res) => {
   }
 };
 
-export const fulfillDonation = async (req, res) => {
+export const getStockHistoryByBloodType = async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const hospital_id = req.user.id;
-    const { request_id, units_given = 1 } = req.body;
+    const { bloodType } = req.params;
 
-    const reqRes = await pool.query(
-      `SELECT blood_type, hospital_id FROM requests WHERE request_id = $1`,
-      [request_id]
+    if (!bloodType)
+      return res.status(400).json({ message: "Blood type is required" });
+
+    const history = await pool.query(
+      `
+      SELECT changed_at, change
+      FROM inventory_history
+      WHERE hospital_id = $1
+        AND blood_type = $2
+      ORDER BY changed_at ASC
+      `,
+      [hospital_id, bloodType]
     );
 
-    if (reqRes.rows.length === 0)
-      return res.status(404).json({ message: "Request not found" });
+    const formattedHistory = history.rows.map((row) => ({
+      date: row.changed_at
+        ? new Date(row.changed_at).toISOString()
+        : new Date().toISOString(),
+      units: row.change ?? 0,
+    }));
 
-    const request = reqRes.rows[0];
-    await pool.query("BEGIN");
-
-    // ✅ Update stock automatically
-    await pool.query(
-      `INSERT INTO blood_stocks (hospital_id, blood_type, units_available)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (hospital_id, blood_type)
-       DO UPDATE SET 
-          units_available = blood_stocks.units_available + EXCLUDED.units_available,
-          last_updated = NOW()`,
-      [hospital_id, request.blood_type, units_given]
-    );
-
-    // ✅ Fulfill request
-    await pool.query(
-      `UPDATE requests SET status='fulfilled', updated_at = NOW()
-       WHERE request_id = $1`,
-      [request_id]
-    );
-
-    // ✅ History entry
-    await pool.query(
-      `INSERT INTO inventory_history 
-       (hospital_id, blood_type, change, units_after, reason, changed_by)
-       SELECT $1, $2, $3, units_available, 'Donation Received', $1
-       FROM blood_stocks WHERE hospital_id = $1 AND blood_type = $2`,
-      [hospital_id, request.blood_type, units_given]
-    );
-
-    // ✅ Notify hospital
-    await pool.query(
-      `INSERT INTO notifications (user_id, message, type)
-       VALUES ($1, $2, 'donation')`,
-      [
-        hospital_id,
-        `✅ Donation received: +${units_given} units of ${request.blood_type}`,
-      ]
-    );
-
-    await pool.query("COMMIT");
-
-    res.json({ message: "Donation fulfilled & inventory updated ✅" });
+    res.json(formattedHistory);
   } catch (err) {
-    await pool.query("ROLLBACK");
-    console.error("fulfillDonation error:", err);
+    console.error("getStockHistoryByBloodType error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -253,11 +259,23 @@ export const createWalkInDonation = async (req, res) => {
     // 🔹 Insert donation record
     const donationRes = await client.query(
       `INSERT INTO donations 
-         (donor_id, hospital_id, blood_type, donation_type, donation_date, status)
-       VALUES ($1, $2, $3, 'whole_blood', NOW(), 'completed')
+         (donor_id, hospital_id, blood_type, donation_type, donation_date, status, units)
+       VALUES ($1, $2, $3, 'whole_blood', NOW(), 'completed', $4)
        RETURNING donation_id`,
-      [donor_id, hospital_id, blood_type]
+      [donor_id, hospital_id, blood_type, units]
     );
+
+    const donation_id = donationRes.rows[0].donation_id;
+
+    const bagIds = [];
+    for (let i = 0; i < units; i++) {
+      const bagRes = await client.query(
+        `INSERT INTO blood_bags (donation_id, hospital_id, blood_type) 
+         VALUES ($1, $2, $3) RETURNING bag_id`,
+        [donation_id, hospital_id, blood_type]
+      );
+      bagIds.push(bagRes.rows[0].bag_id);
+    }
 
     // 🔹 Update blood stocks
     const stockRes = await client.query(
@@ -274,12 +292,22 @@ export const createWalkInDonation = async (req, res) => {
     const new_units_after = stockRes.rows[0].units_available;
 
     // 🔹 Insert inventory history with donor_id
-    await client.query(
-      `INSERT INTO inventory_history
-         (hospital_id, blood_type, change, units_after, reason, changed_by, donor_id)
-       VALUES ($1, $2, $3, $4, 'Walk-in Donation', $5, $6)`,
-      [hospital_id, blood_type, units, new_units_after, req.user.id, donor_id]
-    );
+    for (const bag_id of bagIds) {
+      await client.query(
+        `INSERT INTO inventory_history
+         (hospital_id, blood_type, change, units_after, reason, changed_by, donor_id, bag_id)
+       VALUES ($1, $2, $3, $4, 'Walk-in Donation', $5, $6, $7)`,
+        [
+          hospital_id,
+          blood_type,
+          units,
+          new_units_after,
+          req.user.id,
+          donor_id,
+          bag_id,
+        ]
+      );
+    }
 
     // 🔹 Low stock notification
     if (new_units_after < 5) {
@@ -295,10 +323,20 @@ export const createWalkInDonation = async (req, res) => {
 
     await client.query("COMMIT");
 
+    await logAudit(hospital_id, "create_walk_in_donation", "inventory", {
+      donor_id,
+      donation_id,
+      bag_ids: bagIds,
+      blood_type,
+      units_added: units,
+      units_after: new_units_after,
+    });
+
     res.json({
       message: "Walk-in donation recorded successfully",
       donation_id: donationRes.rows[0].donation_id,
       donor_id,
+      bag_ids: bagIds,
       email, // return credentials to hospital
       password: plainPassword,
       units_available: new_units_after,

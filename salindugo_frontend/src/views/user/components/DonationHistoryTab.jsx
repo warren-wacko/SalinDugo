@@ -40,6 +40,13 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -379,27 +386,19 @@ export function DonationHistoryTab({ accessToken, setOpen }) {
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed border-muted rounded-xl bg-muted/10">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-              <HeartHandshake className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">
-              No donation records found
-            </h3>
-            <p className="text-muted-foreground max-w-sm mb-6">
-              You haven’t made any blood donations yet matching these filters.
-            </p>
-            <Button
-              onClick={() => {
-                setOpen(true);
-                setStatusFilter("all");
-                setDateFilter(null);
-                setSearchTerm("");
-              }}
-            >
-              Schedule a Donation
-            </Button>
-          </div>
+          <Empty className="py-20 border-dashed border-2 rounded-xl bg-muted/20">
+            <EmptyHeader>
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                <HeartHandshake className="h-8 w-8 text-red-700" />
+              </div>
+              <EmptyTitle className="text-lg font-semibold mb-2">
+                No donation records found
+              </EmptyTitle>
+              <EmptyDescription className="max-w-sm mx-auto mt-2">
+                You haven’t made any blood donations yet matching these filters.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )}
 
         {/* PAGINATION */}

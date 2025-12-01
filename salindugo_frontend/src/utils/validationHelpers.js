@@ -10,8 +10,16 @@ export const allowTextOnly = (e) => {
 
 // Allow only numbers
 export const allowNumbersOnly = (e) => {
-  const regex = /^[0-9]*$/;
+  const regex = /^[0-9.]$/;
+
+  // Reject anything that is not a digit or a dot
   if (!regex.test(e.data)) {
+    e.preventDefault();
+    return;
+  }
+
+  // Prevent multiple decimals
+  if (e.data === "." && e.target.value.includes(".")) {
     e.preventDefault();
   }
 };

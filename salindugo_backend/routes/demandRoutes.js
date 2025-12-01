@@ -1,9 +1,10 @@
 import express from "express";
+import { getDemandForecast } from "../controller/demandController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
-import { getDonations } from "../controller/donationController.js";
 
 const router = express.Router();
 
-router.get("/", authenticateToken, getDonations);
+// hospital route
+router.get("/forecast", authenticateToken, getDemandForecast);
 
 export default router;

@@ -1,5 +1,5 @@
 import pool from "../db.js";
-
+import { logAudit } from "../utils/auditLogger.js";
 // ==========================================
 // POST /api/schedules → Create donation schedule
 // ==========================================
@@ -64,6 +64,15 @@ export const createSchedule = async (req, res) => {
     );
 
     await client.query("COMMIT");
+
+    await logAudit(sender_id, "create_schedule", "schedule", {
+      schedule_id: schedule.schedule_id,
+      donor_id,
+      hospital_id,
+      scheduled_date,
+      scheduled_time,
+      blood_type,
+    });
 
     res.status(201).json({
       message: "Donation schedule created successfully",
@@ -230,6 +239,14 @@ export const cancelSchedule = async (req, res) => {
 
     await client.query("COMMIT");
 
+    await logAudit(user_id, "cancel_schedule", "schedule", {
+      schedule_id: id,
+      cancelled_by: user_id,
+      donor_id: schedule.donor_id,
+      hospital_id: schedule.hospital_id,
+      previous_status: schedule.status,
+    });
+
     res.json({
       message: "Schedule cancelled successfully",
       schedule: updatedSchedule,
@@ -322,28 +339,33 @@ export const updateSchedule = async (req, res) => {
 
       const donation = donationResult.rows[0];
 
-      // ✅ UPDATE STOCK ( +1 unit from donation )
-      const addedUnits = 1;
+      // Add new blood bag (for this donation)
+      const bagResult = await client.query(
+        `INSERT INTO blood_bags (hospital_id, blood_type, status, created_at, donation_id)
+         VALUES ($1, $2, 'available', NOW(), $3)
+         RETURNING bag_id`,
+        [schedule.hospital_id, schedule.blood_type, donation.donation_id]
+      );
+      const bagId = bagResult.rows[0].bag_id;
+
+      // Update stock
       const stockRes = await client.query(
-        `SELECT units_available FROM blood_stocks 
-     WHERE hospital_id = $1 AND blood_type = $2 
-     FOR UPDATE`,
+        `SELECT units_available FROM blood_stocks WHERE hospital_id=$1 AND blood_type=$2 FOR UPDATE`,
         [schedule.hospital_id, schedule.blood_type]
       );
 
-      let newUnits = addedUnits;
+      let newUnits = 1;
       if (stockRes.rows.length > 0) {
-        newUnits = Number(stockRes.rows[0].units_available) + addedUnits;
+        newUnits = Number(stockRes.rows[0].units_available) + 1;
         await client.query(
-          `UPDATE blood_stocks 
-       SET units_available = $1, last_updated = NOW()
-       WHERE hospital_id = $2 AND blood_type = $3`,
+          `UPDATE blood_stocks SET units_available=$1, last_updated=NOW()
+           WHERE hospital_id=$2 AND blood_type=$3`,
           [newUnits, schedule.hospital_id, schedule.blood_type]
         );
       } else {
         await client.query(
           `INSERT INTO blood_stocks (hospital_id, blood_type, units_available)
-       VALUES ($1, $2, $3)`,
+           VALUES ($1, $2, $3)`,
           [schedule.hospital_id, schedule.blood_type, newUnits]
         );
       }
@@ -351,16 +373,17 @@ export const updateSchedule = async (req, res) => {
       // ✅ Track changes
       await client.query(
         `INSERT INTO inventory_history 
-     (hospital_id, blood_type, change, units_after, reason, changed_by, donor_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         (hospital_id, blood_type, change, units_after, reason, changed_by, donor_id, bag_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           schedule.hospital_id,
           schedule.blood_type,
-          addedUnits,
+          1,
           newUnits,
           `Donation from schedule #${schedule.schedule_id}`,
           sender_id,
           schedule.donor_id,
+          bagId,
         ]
       );
 
@@ -392,9 +415,25 @@ export const updateSchedule = async (req, res) => {
           donation.donation_id,
         ]
       );
+
+      await logAudit(sender_id, "complete_scheduled_donation", "donation", {
+        schedule_id: schedule.schedule_id,
+        donation_id: donation.donation_id,
+        donor_id: schedule.donor_id,
+        hospital_id: schedule.hospital_id,
+        blood_type: schedule.blood_type,
+        bag_id: bagId,
+        units_added: 1,
+      });
     }
 
     await client.query("COMMIT");
+
+    await logAudit(sender_id, "update_schedule", "schedule", {
+      schedule_id: id,
+      new_status: status || schedule.status,
+      new_remarks: remarks || schedule.remarks,
+    });
 
     res.json({
       message: "Schedule updated successfully",

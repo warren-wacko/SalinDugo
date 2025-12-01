@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useContext } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -19,11 +19,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarInitials } from "@/components/ui/avatar";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -40,18 +38,34 @@ import {
   User,
   Activity,
   Search,
-  Navigation,
+  SquareUserRound,
 } from "lucide-react";
-import { useContext } from "react";
 import { AuthContext } from "../../../context/AuthContext";
-import { useEffect } from "react";
-import axios from "axios";
 import { allowNumbersOnly } from "@/utils/validationHelpers";
 // 🗺 Leaflet imports
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../../../api/axios";
+
+const requiredUserFields = [
+  "contact_number",
+  "age",
+  "title",
+  "civil_status",
+  "weight",
+  "height",
+  "medical_conditions",
+  "allergies",
+  "address",
+  "city",
+  "province",
+  "region",
+  "zip_code",
+  "latitude",
+  "longitude",
+];
+
 // Fix default marker issue in Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -101,7 +115,7 @@ function LocationPicker({ position, setPosition, isEditing, setFormData }) {
     },
   });
 
-  return position ? <Marker position={position}></Marker> : null;
+  return position ? <Marker position={position} /> : null;
 }
 
 export default function ProfilePage() {
@@ -114,6 +128,10 @@ export default function ProfilePage() {
     // Personal Info
     firstName: "",
     lastName: "",
+    middleInitial: "",
+    civil_status: "",
+    age: "",
+    title: "",
     gender: "",
     email: "",
     contact_number: "",
@@ -134,10 +152,49 @@ export default function ProfilePage() {
     latitude: "",
     longitude: "",
   });
+
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const handlePasswordChange = (e) => {
+    setPasswordData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
+
+  const handlePasswordSave = async () => {
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    try {
+      await api.patch(`/api/auth/change-password`, {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
+
+      toast.success("Password updated successfully");
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setIsChangingPassword(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update password");
+      console.error(err);
+    }
+  };
+
   const handleBackClick = () => {
-    if (!profile?.profile_completed) {
+    if (!profile?.profile_completed && user.role === "user") {
       setShowDialog(true);
     } else {
       navigate(-1);
@@ -145,19 +202,19 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    // 🆕 Wait for both auth and user to be loaded
-    if (authLoading || !user) {
-      console.log("Waiting for auth:", { authLoading, userExists: !!user });
-      return;
-    }
+    if (authLoading || !user) return;
 
     const fetchProfile = async () => {
       try {
         const res = await api.get(`/api/users/${user.id}`);
         setProfile(res.data);
         setFormData({
+          title: res.data.title || "",
           firstName: res.data.full_name?.split(" ")[0] || "",
+          middle_initial: res.data.middle_initial || "",
+          age: res.data.age || "",
           lastName: res.data.full_name?.split(" ").slice(1).join(" ") || "",
+          civil_status: res.data.civil_status || "",
           gender: res.data.gender || "",
           email: res.data.email || "",
           contact_number: res.data.contact_number || "",
@@ -187,17 +244,11 @@ export default function ProfilePage() {
     fetchProfile();
   }, [authLoading, user]);
 
-  // 🆕 Show loading state while waiting
   if (authLoading || loading || !user) {
-    console.log("Showing loading state:", {
-      authLoading,
-      loading,
-      userExists: !!user,
-    });
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-muted-foreground">Loading profile...</p>
         </div>
       </div>
@@ -223,15 +274,17 @@ export default function ProfilePage() {
 
       setFormData((prev) => ({
         ...prev,
-        address: display_name,
+        address: display_name || "",
+        barangay:
+          address.suburb || address.village || address.neighbourhood || "",
         city:
           address.city ||
-          address.town ||
           address.municipality ||
+          address.town ||
           address.county ||
           "",
-        province: address.state || address.region || "",
-        region: address.region || address.state || "",
+        province: address.state || addr.region || "",
+        region: prev.region, // KEEP THE USER'S SELECTED REGION
         zip_code: address.postcode || "",
         latitude: parseFloat(lat).toFixed(5),
         longitude: parseFloat(lon).toFixed(5),
@@ -243,28 +296,57 @@ export default function ProfilePage() {
   };
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === "height" && value > 300) return;
+    if (name === "weight" && value > 999) return;
+    if (name === "age" && value > 150) return;
+
+    setFormData({
+      ...formData,
+      [name]: value,
+    });
+  };
+
+  const handleSelectChange = (name, value) => {
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
   };
 
   const handleSave = async () => {
+    if (user.role === "user") {
+      for (const field of requiredUserFields) {
+        if (!formData[field] || formData[field].toString().trim() === "") {
+          toast.error("Please fill in all required fields", {
+            description: `Missing: ${field.replace("_", " ")}`,
+          });
+          return;
+        }
+      }
+    }
     try {
       const payload = {
-        contact_number: formData.contact_number,
-        weight: formData.weight,
-        height: formData.height,
-        medical_conditions: formData.medical_conditions,
-        allergies: formData.allergies,
-        address: formData.address,
-        city: formData.city,
-        province: formData.province,
-        region: formData.region,
-        zip_code: formData.zip_code,
-        latitude: formData.latitude,
-        longitude: formData.longitude,
+        contact_number: formData.contact_number || null,
+        address: formData.address || null,
+        city: formData.city || null,
+        province: formData.province || null,
+        region: formData.region || null,
+        zip_code: formData.zip_code || null,
+        latitude: formData.latitude || null,
+        longitude: formData.longitude || null,
       };
+
+      if (user.role === "user") {
+        payload.weight = formData.weight || null;
+        payload.height = formData.height || null;
+        payload.medical_conditions = formData.medical_conditions || null;
+        payload.allergies = formData.allergies || null;
+        payload.age = formData.age || null;
+        payload.title = formData.title || null;
+        payload.civil_status = formData.civil_status || null;
+      }
 
       const res = await api.patch(`/api/users/${user.id}`, payload);
       setProfile(res.data.user);
@@ -281,10 +363,8 @@ export default function ProfilePage() {
         description: "Your changes have been saved.",
       });
     } catch (err) {
-      toast.error("Please fill in all fields", {
-        description: "Put N/A if not applicable.",
-      });
-      console.error("Update failed:", err);
+      toast.error(err.response?.data?.message || "Failed to update profile");
+      console.error(err);
     }
   };
 
@@ -293,9 +373,16 @@ export default function ProfilePage() {
     lng: parseFloat(formData.longitude) || 120.9842,
   };
 
+  const roleDescription =
+    user.role === "user"
+      ? "Blood Donor & Recipient"
+      : user.role === "hospital"
+      ? "Blood Center Account"
+      : "Administrator Account";
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Confirmation Dialog */}
+      {/* Confirmation Dialog for donors only */}
       <AlertDialog open={showDialog} onOpenChange={setShowDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -310,6 +397,7 @@ export default function ProfilePage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+
       {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
@@ -361,18 +449,29 @@ export default function ProfilePage() {
                     />
                   </AvatarFallback>
                 </Avatar>
-                <CardTitle>
-                  {formData.firstName} {formData.lastName}
-                </CardTitle>
-                <CardDescription>Blood Donor & Recipient</CardDescription>
+
+                {user.role === "user" ? (
+                  <CardTitle>
+                    {formData.title} {formData.firstName} {formData.lastName}
+                  </CardTitle>
+                ) : (
+                  <CardTitle>
+                    {formData.firstName} {formData.lastName}
+                  </CardTitle>
+                )}
+
+                <CardDescription>{roleDescription}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-primary">
-                    {formData.blood_type}
+                {/* Blood type highlight: ONLY for donors/recipients */}
+                {user.role === "user" && (
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-primary">
+                      {formData.blood_type}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Blood Type</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">Blood Type</p>
-                </div>
+                )}
 
                 <div className="space-y-2 pt-4 border-t">
                   <div className="flex items-center gap-2 text-sm">
@@ -389,13 +488,23 @@ export default function ProfilePage() {
                       {formData.city}, {formData.province}
                     </span>
                   </div>
-                </div>
 
-                <div className="pt-4 border-t">
-                  <Badge variant="secondary" className="w-full justify-center">
-                    <Activity className="h-3 w-3 mr-1" />
-                    Active Member
-                  </Badge>
+                  {/* Civil status: ONLY shown for donors/recipients */}
+                  {user.role === "user" && formData.civil_status && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <SquareUserRound className="h-4 w-4 text-muted-foreground" />
+                      <span className="truncate">
+                        {formData.civil_status
+                          .split(" ")
+                          .map(
+                            (word) =>
+                              word.charAt(0).toUpperCase() +
+                              word.slice(1).toLowerCase()
+                          )
+                          .join(" ")}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -416,29 +525,47 @@ export default function ProfilePage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      name="firstName"
-                      value={formData.firstName}
-                      onChange={handleChange}
-                      disabled
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      name="lastName"
-                      value={formData.lastName}
-                      onChange={handleChange}
-                      disabled
-                    />
-                  </div>
+                  {/* PERSONAL NAME FIELDS */}
+                  {user.role === "hospital" ? (
+                    // For hospitals — show a single full name field
+                    <div className="space-y-2">
+                      <Label htmlFor="fullName">Blood Center Name</Label>
+                      <Input
+                        id="fullName"
+                        value={profile?.full_name || ""}
+                        disabled // hospitals cannot edit name
+                      />
+                    </div>
+                  ) : (
+                    // For donors/recipients/admin — show regular name fields
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="firstName">First Name</Label>
+                        <Input
+                          id="firstName"
+                          name="firstName"
+                          value={formData.firstName}
+                          onChange={handleChange}
+                          disabled
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="lastName">Last Name</Label>
+                        <Input
+                          id="lastName"
+                          name="lastName"
+                          value={formData.lastName}
+                          onChange={handleChange}
+                          disabled
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-4 gap-5">
+                  {/* Phone: visible for all roles */}
                   <div className="space-y-2">
                     <Label htmlFor="contact_number">Phone Number</Label>
                     <Input
@@ -452,134 +579,276 @@ export default function ProfilePage() {
                       disabled={!isEditing}
                     />
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="gender" className="px-1">
-                      Gender
-                    </Label>
-                    <Select
-                      value={formData.gender}
-                      disabled
-                      onValueChange={(value) =>
-                        handleSelectChange("gender", value)
-                      }
-                    >
-                      <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Select your gender" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Male">Male</SelectItem>
-                        <SelectItem value="Female">Female</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+
+                  {/* The rest of these fields are donor-only */}
+                  {user.role === "user" && (
+                    <>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="gender" className="px-1">
+                          Gender
+                        </Label>
+                        <Select
+                          value={formData.gender}
+                          disabled
+                          onValueChange={(value) =>
+                            handleSelectChange("gender", value)
+                          }
+                        >
+                          <SelectTrigger className="w-48">
+                            <SelectValue placeholder="Select your gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="age">Age</Label>
+                        <Input
+                          id="age"
+                          name="age"
+                          type="number"
+                          value={formData.age}
+                          onBeforeInput={allowNumbersOnly}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="title" className="px-1">
+                          Title
+                        </Label>
+                        <Select
+                          value={formData.title}
+                          disabled={!isEditing}
+                          onValueChange={(value) =>
+                            handleSelectChange("title", value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select title (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Mr.">Mr.</SelectItem>
+                            <SelectItem value="Mrs.">Mrs.</SelectItem>
+                            <SelectItem value="Ms.">Ms.</SelectItem>
+                            <SelectItem value="Dr.">Dr.</SelectItem>
+                            <SelectItem value="Prof.">Prof.</SelectItem>
+                            <SelectItem value="Engr.">Engr.</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="civil_status" className="px-1">
+                          Civil Status
+                        </Label>
+                        <Select
+                          value={formData.civil_status}
+                          disabled={!isEditing}
+                          onValueChange={(value) =>
+                            handleSelectChange("civil_status", value)
+                          }
+                        >
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="single">Single</SelectItem>
+                            <SelectItem value="married">Married</SelectItem>
+                            <SelectItem value="widowed">Widowed</SelectItem>
+                            <SelectItem value="separated">Separated</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="date_of_birth">Date of Birth</Label>
-                    <Input
-                      id="date_of_birth"
-                      name="date_of_birth"
-                      value={formData.date_of_birth.split("T")[0]}
-                      onChange={handleChange}
-                      disabled
-                    />
+                {/* DOB + Blood type: donor-only */}
+                {user.role === "user" && (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="date_of_birth">Date of Birth</Label>
+                      <Input
+                        id="date_of_birth"
+                        name="date_of_birth"
+                        value={formData.date_of_birth?.split("T")[0] || ""}
+                        onChange={handleChange}
+                        disabled
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="blood_type">Blood Type</Label>
+                      <Select
+                        value={formData.blood_type}
+                        disabled
+                        name="blood_type"
+                        onValueChange={(value) =>
+                          handleSelectChange("blood_type", value)
+                        }
+                      >
+                        <SelectTrigger id="blood_type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="A+">A+</SelectItem>
+                          <SelectItem value="A-">A-</SelectItem>
+                          <SelectItem value="B+">B+</SelectItem>
+                          <SelectItem value="B-">B-</SelectItem>
+                          <SelectItem value="AB+">AB+</SelectItem>
+                          <SelectItem value="AB-">AB-</SelectItem>
+                          <SelectItem value="O+">O+</SelectItem>
+                          <SelectItem value="O-">O-</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="blood_type">Blood Type</Label>
-                    <Select
-                      value={formData.blood_type}
-                      onValueChange={handleChange}
-                      disabled
-                      name="blood_type"
-                    >
-                      <SelectTrigger id="blood_type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="A+">A+</SelectItem>
-                        <SelectItem value="A-">A-</SelectItem>
-                        <SelectItem value="B+">B+</SelectItem>
-                        <SelectItem value="B-">B-</SelectItem>
-                        <SelectItem value="AB+">AB+</SelectItem>
-                        <SelectItem value="AB-">AB-</SelectItem>
-                        <SelectItem value="O+">O+</SelectItem>
-                        <SelectItem value="O-">O-</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Medical Information */}
+            {/* Change Password - visible for all roles */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
-                  Medical Information
-                </CardTitle>
-                <CardDescription>
-                  Provide your medical details for better matching
-                </CardDescription>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="weight">Weight (kg)</Label>
+                <div className="grid md:grid-cols-1 gap-4">
+                  <div>
+                    <Label className="mb-2">Current Password</Label>
                     <Input
-                      id="weight"
-                      type="number"
-                      value={formData.weight}
-                      onBeforeInput={allowNumbersOnly}
-                      onChange={handleChange}
+                      type="password"
+                      name="currentPassword"
+                      value={passwordData.currentPassword}
+                      onChange={handlePasswordChange}
                       disabled={!isEditing}
-                      name="weight"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="height">Height (cm)</Label>
+                  <div>
+                    <Label className="mb-2">New Password</Label>
                     <Input
-                      id="height"
-                      type="number"
-                      onBeforeInput={allowNumbersOnly}
-                      name="height"
-                      value={formData.height}
-                      onChange={handleChange}
+                      type="password"
+                      name="newPassword"
+                      value={passwordData.newPassword}
+                      onChange={handlePasswordChange}
+                      disabled={!isEditing}
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-2">Confirm New Password</Label>
+                    <Input
+                      type="password"
+                      name="confirmPassword"
+                      value={passwordData.confirmPassword}
+                      onChange={handlePasswordChange}
                       disabled={!isEditing}
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="medical_conditions">Medical Conditions</Label>
-                  <Textarea
-                    id="medical_conditions"
-                    name="medical_conditions"
-                    value={formData.medical_conditions}
-                    onChange={handleChange}
-                    disabled={!isEditing}
-                    placeholder="List any medical conditions (e.g., diabetes, hypertension)"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="allergies">Allergies</Label>
-                  <Textarea
-                    id="allergies"
-                    name="allergies"
-                    value={formData.allergies}
-                    onChange={handleChange}
-                    disabled={!isEditing}
-                    placeholder="List any allergies (e.g., medications, food)"
-                    rows={3}
-                  />
+                <div className="flex gap-2 mt-2">
+                  {isEditing ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsChangingPassword(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={handlePasswordSave}>
+                        Save Password
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      onClick={() => setIsChangingPassword(true)}
+                      disabled={!isEditing}
+                    >
+                      Change Password
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Location & Geocoding */}
+            {/* Medical Information - donor-only */}
+            {user.role === "user" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5" />
+                    Medical Information
+                  </CardTitle>
+                  <CardDescription>
+                    Provide your medical details for better matching
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="weight">Weight (kg)</Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        value={formData.weight}
+                        onBeforeInput={allowNumbersOnly}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        name="weight"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="height">Height (cm)</Label>
+                      <Input
+                        id="height"
+                        type="number"
+                        onBeforeInput={allowNumbersOnly}
+                        name="height"
+                        value={formData.height}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        max={300}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="medical_conditions">
+                      Medical Conditions
+                    </Label>
+                    <Textarea
+                      id="medical_conditions"
+                      name="medical_conditions"
+                      value={formData.medical_conditions}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="List any medical conditions (e.g., diabetes, hypertension)"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="allergies">Allergies</Label>
+                    <Textarea
+                      id="allergies"
+                      name="allergies"
+                      value={formData.allergies}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="List any allergies (e.g., medications, food)"
+                      rows={3}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Location & Geocoding - visible for ALL roles */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -588,11 +857,33 @@ export default function ProfilePage() {
                 </CardTitle>
                 <CardDescription>
                   Update your address and use geocoding to set your precise
-                  location for better matching
+                  location
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* 🧭 Address Search */}
+                <div className="space-y-2">
+                  <Label htmlFor="region">Region</Label>
+                  <Select
+                    value={formData.region}
+                    disabled={!isEditing}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, region: value }))
+                    }
+                  >
+                    <SelectTrigger id="region">
+                      <SelectValue placeholder="Select Region" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="region">Select a Region</SelectItem>
+                      <SelectItem value="NCR">NCR</SelectItem>
+                      <SelectItem value="Region III">Region III</SelectItem>
+                      <SelectItem value="Region IV-A">Region IV-A</SelectItem>
+                      <SelectItem value="Region VI">Region VI</SelectItem>
+                      <SelectItem value="Region VII">Region VII</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Address Search */}
                 <div className="flex gap-2">
                   <Input
                     id="searchAddress"
@@ -639,16 +930,6 @@ export default function ProfilePage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="region">Region</Label>
-                    <Input
-                      id="region"
-                      name="region"
-                      value={formData.region}
-                      onChange={handleChange}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div className="space-y-2">
                     <Label htmlFor="province">Province</Label>
                     <Input
                       id="province"
@@ -669,6 +950,7 @@ export default function ProfilePage() {
                     />
                   </div>
                 </div>
+
                 <Label>Tap on the map to update your location</Label>
                 <div className="h-64 rounded-lg overflow-hidden border">
                   <MapContainer
@@ -697,7 +979,7 @@ export default function ProfilePage() {
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Latitude</Label>
+                    <Label className="mb-2">Latitude</Label>
                     <Input
                       value={formData.latitude}
                       disabled
@@ -705,7 +987,7 @@ export default function ProfilePage() {
                     />
                   </div>
                   <div>
-                    <Label>Longitude</Label>
+                    <Label className="mb-2">Longitude</Label>
                     <Input
                       value={formData.longitude}
                       disabled

@@ -5,6 +5,7 @@ import {
   updateStock,
   getInventoryHistory,
   createWalkInDonation,
+  getStockHistoryByBloodType,
 } from "../controller/inventoryController.js";
 
 const router = express.Router();
@@ -14,4 +15,9 @@ router.get("/", authenticateToken, getHospitalStock);
 router.patch("/", authenticateToken, updateStock);
 router.get("/history", authenticateToken, getInventoryHistory);
 router.post("/walkin", authenticateToken, createWalkInDonation);
+router.get(
+  "/history/:bloodType",
+  authenticateToken,
+  getStockHistoryByBloodType
+);
 export default router;

@@ -114,13 +114,6 @@ const Navbar = ({ setActiveTab }) => {
     ? notifications.filter((n) => !n.is_read).length
     : 0;
 
-  const handlePageClick = (e, newPage) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    if (newPage < 1 || newPage > totalPages) return;
-    setPage(newPage);
-  };
-
   return (
     <header className="border-b bg-card">
       <div className="container mx-auto px-4 py-4">
@@ -141,17 +134,19 @@ const Navbar = ({ setActiveTab }) => {
             {/* 🔔 Notifications */}
             <DropdownMenu open={isNotifOpen} onOpenChange={setIsNotifOpen}>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="relative">
-                  <Bell className="h-4 w-4" />
-                  {unreadCount > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="absolute -top-1 -right-1 h-4 w-4 rounded-full p-0 text-[10px]"
-                    >
-                      {unreadCount}
-                    </Badge>
-                  )}
-                </Button>
+                {user.role !== "admin" && (
+                  <Button variant="ghost" size="sm" className="relative">
+                    <Bell className="h-4 w-4" />
+                    {unreadCount > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -top-1 -right-1 h-4 w-4 rounded-full p-0 text-[10px]"
+                      >
+                        {unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                )}
               </DropdownMenuTrigger>
 
               <DropdownMenuContent className="w-80" align="end">

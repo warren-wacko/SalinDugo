@@ -306,20 +306,17 @@ export function RequestHistoryTab({
         ) : requests.length === 0 ? (
           <Empty className="py-20 border-dashed border-2 rounded-xl bg-muted/20">
             <EmptyHeader>
-              <div className="mx-auto bg-primary/10 p-4 rounded-full mb-4 w-fit">
-                <HeartPlus className="h-8 w-8 text-primary" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                <HeartPlus className="h-8 w-8 text-red-700" />
               </div>
-              <EmptyTitle className="text-xl">No requests yet</EmptyTitle>
+              <EmptyTitle className="text-lg font-semibold mb-2">
+                No requests yet
+              </EmptyTitle>
               <EmptyDescription className="max-w-sm mx-auto mt-2">
                 You haven't made any blood requests yet. Start by creating a new
                 request to find donors near you.
               </EmptyDescription>
             </EmptyHeader>
-            <EmptyContent className="mt-6">
-              <Button onClick={() => setOpen(true)} className="gap-2">
-                <HeartPlus className="h-4 w-4" /> Create Request
-              </Button>
-            </EmptyContent>
           </Empty>
         ) : filteredRequests.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center border rounded-xl bg-muted/10 border-dashed">

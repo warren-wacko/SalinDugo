@@ -1,5 +1,6 @@
 import pool from "../db.js";
 import { checkLowStockAndNotify } from "../utils/inventoryHelpers.js";
+import { logAudit } from "../utils/auditLogger.js";
 // ==========================================
 // POST /api/requests → Create new request
 // ==========================================
@@ -60,6 +61,14 @@ export const createRequest = async (req, res) => {
     );
 
     await client.query("COMMIT");
+
+    await logAudit(user_id, "create_request", "request", {
+      request_id: request.request_id,
+      hospital_id,
+      blood_type,
+      units_needed,
+      urgency_level,
+    });
 
     res.status(201).json({
       message: "Blood request created successfully.",
@@ -217,6 +226,12 @@ export const cancelRequest = async (req, res) => {
 
     await client.query("COMMIT");
 
+    await logAudit(user_id, "cancel_request", "request", {
+      request_id: id,
+      hospital_id: request.hospital_id,
+      reason: "user_cancelled",
+    });
+
     res.json({
       message: "Request cancelled successfully",
       request_id: id,
@@ -343,6 +358,13 @@ export const updateRequest = async (req, res) => {
 
     await client.query("COMMIT");
 
+    await logAudit(req.user.id, "update_request", "request", {
+      request_id: id,
+      new_status: status || request.status,
+      new_units_needed: units_needed || request.units_needed,
+      new_urgency: urgency_level || request.urgency_level,
+    });
+
     res.json({
       message: "Request updated successfully",
       request,
@@ -444,6 +466,31 @@ export const fulfillRequest = async (req, res) => {
 
     const updatedStock = Math.max(0, currentStock - request.units_needed);
 
+    const bagRes = await client.query(
+      `SELECT bag_id FROM blood_bags
+       WHERE hospital_id = $1 AND blood_type = $2 AND status = 'available'
+       ORDER BY created_at ASC
+       LIMIT $3`,
+      [hospital_id, request.blood_type, request.units_needed]
+    );
+
+    if (bagRes.rows.length < request.units_needed) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        message: `Not enough available blood bags to fulfill request`,
+      });
+    }
+
+    const bagIds = bagRes.rows.map((b) => b.bag_id);
+
+    // 4️⃣ Mark bags as used
+    await client.query(
+      `UPDATE blood_bags
+       SET status = 'used', updated_at = NOW()
+       WHERE bag_id = ANY($1::int[])`,
+      [bagIds]
+    );
+
     // ✅ 3️⃣ Reduce stock
     await client.query(
       `UPDATE blood_stocks 
@@ -453,19 +500,23 @@ export const fulfillRequest = async (req, res) => {
     );
 
     // ✅ 4️⃣ Log history
-    await client.query(
-      `INSERT INTO inventory_history 
-       (hospital_id, blood_type, change, units_after, reason, changed_by, recipient_id)
-       VALUES ($1, $2, $3, $4, 'request_fulfilled', $5, $6)`,
-      [
-        hospital_id,
-        request.blood_type,
-        -request.units_needed,
-        updatedStock,
-        hospital_id,
-        request.requester_id,
-      ]
-    );
+    for (const bagId of bagIds) {
+      await client.query(
+        `INSERT INTO inventory_history
+     (hospital_id, blood_type, change, units_after, reason, changed_by, recipient_id, bag_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          hospital_id,
+          request.blood_type,
+          -1,
+          updatedStock,
+          "Request Fulfilled",
+          hospital_id,
+          request.requester_id,
+          bagId,
+        ]
+      );
+    }
 
     // ✅ 5️⃣ Mark request fulfilled
     await client.query(
@@ -488,6 +539,13 @@ export const fulfillRequest = async (req, res) => {
     await checkLowStockAndNotify(hospital_id, request.blood_type);
 
     await client.query("COMMIT");
+
+    await logAudit(hospital_id, "fulfill_request", "inventory", {
+      request_id: id,
+      blood_type: request.blood_type,
+      units_used: request.units_needed,
+      bag_ids: bagIds,
+    });
 
     return res.json({
       message: "Request fulfilled successfully ✅",

@@ -1,13 +1,7 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import Barcode from "react-barcode";
 import {
   Pagination,
   PaginationContent,
@@ -35,6 +29,7 @@ import { format } from "date-fns";
 import api from "../../../api/axios";
 import { toast } from "sonner";
 import BloodBag3D from "./blood-bag-3d";
+import { cn } from "@/lib/utils";
 
 export default function InventoryHistoryTab({ accessToken }) {
   const [history, setHistory] = useState([]);
@@ -55,6 +50,7 @@ export default function InventoryHistoryTab({ accessToken }) {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       setHistory(res.data.history ?? []);
+      console.log("Fetched history:", res.data.history);
     } catch (err) {
       console.error(err);
       toast.error("Failed to load history");
@@ -64,6 +60,12 @@ export default function InventoryHistoryTab({ accessToken }) {
   useEffect(() => {
     if (accessToken) fetchHistory();
   }, [accessToken]);
+
+  useEffect(() => {
+    if (selected) {
+      console.log("Selected history item:", selected);
+    }
+  }, [selected]);
 
   // Filtering logic
   const filteredHistory = history.filter((item) => {
@@ -195,11 +197,14 @@ export default function InventoryHistoryTab({ accessToken }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {paginatedHistory.map((item) => (
+          {paginatedHistory.map((item, index) => (
             <div
-              key={item.history_id}
+              key={item.history_id ?? index}
               className="group relative cursor-pointer"
-              onClick={() => setSelected(item)}
+              onClick={() => {
+                setSelected(item);
+                console.log(item);
+              }}
             >
               <div className="relative bg-gradient-to-br from-background to-muted/30 rounded-2xl border-2 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden hover:scale-[1.02]">
                 <div className="relative">
@@ -334,89 +339,157 @@ export default function InventoryHistoryTab({ accessToken }) {
       )}
 
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Droplet className="h-5 w-5 text-red-600" />
-              Inventory Change Details
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-2xl bg-transparent border-none shadow-none p-0 flex items-center justify-center overflow-visible">
+          {/* Hidden accessible title */}
+          <DialogTitle className="sr-only">Blood Bag Details</DialogTitle>
+          <div
+            className="relative w-full flex items-center justify-center"
+            style={{ height: "700px" }}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute mt-1.5 mr-1.5 right-0 top-0 z-50 text-white hover:text-white/80 bg-black/20 hover:bg-black/40 rounded-full"
+              onClick={() => setSelected(null)}
+            ></Button>
 
-          {selected && (
-            <div className="space-y-4">
-              {/* Blood Type Badge */}
-              <div
-                className={`p-4 rounded-lg bg-gradient-to-br ${getBloodColor(
-                  selected.blood_type
-                )} flex items-center justify-center`}
+            {selected && (
+              <BloodBag3D
+                bloodType={selected.blood_type}
+                change={selected.change}
+                className="relative h-[700px] w-full rounded-2xl bg-slate-100/50 backdrop-blur-sm"
               >
-                <div className="bg-white/95 backdrop-blur-sm rounded-full px-6 py-2">
-                  <p className="text-2xl font-bold text-red-700">
-                    {selected.blood_type}
-                  </p>
+                {/* Sticker Container — centered & floating above */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="bg-white p-5 w-[340px] shadow-xl flex flex-col gap-3 text-slate-900 border border-slate-200 pointer-events-auto origin-center">
+                    {/* Top Barcode Section */}
+                    <div className="flex justify-between items-start border-b border-slate-200 pb-2">
+                      <div className="space-y-1">
+                        {[...Array(12)].map((_, i) => (
+                          <div
+                            key={i}
+                            className="h-full bg-black"
+                            style={{
+                              width: Math.random() > 0.5 ? "2px" : "4px",
+                            }}
+                          ></div>
+                        ))}
+                      </div>
+                      {/* Donor / Recipient */}
+                      <span className="text-[10px] font-mono tracking-widest mr-15">
+                        {selected.donor_id
+                          ? `Donor ID: ${selected.donor_id}`
+                          : selected.recipient_id
+                          ? `Recipient ID: ${selected.recipient_id}`
+                          : "N/A"}
+                      </span>
+                      <span className="text-[10px] uppercase font-bold tracking-tighter">
+                        {selected.reason ? selected.reason : "No reason"}
+                      </span>
+                    </div>
+
+                    {/* Main Blood Type */}
+                    <div className="flex items-center justify-between py-2">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                          Blood Type
+                        </span>
+                        <span className="text-6xl font-black text-slate-900 tracking-tighter leading-none">
+                          {selected.blood_type.replace(/[^A-Z]/g, "")}
+                        </span>
+                        <span className="text-base font-bold text-slate-600">
+                          Rh{" "}
+                          {selected.blood_type.includes("+")
+                            ? "Positive"
+                            : "Negative"}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-end justify-center h-full">
+                        <div className="border-4 border-slate-900 p-2 mb-1">
+                          <span className="text-3xl font-bold block leading-none">
+                            {selected.blood_type.slice(-1)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Volume & Storage */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Left Column: Dates & Info */}
+                      <div className="flex flex-col gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-[9px] uppercase text-gray-600 font-bold">
+                            Collection Date
+                          </span>
+                          <span className="text-sm font-bold font-mono">
+                            {format(
+                              new Date(selected.changed_at),
+                              "dd.MM.yyyy"
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-[10px] uppercase text-slate-500 font-medium">
+                            Action:
+                          </span>
+                          <span
+                            className={cn(
+                              "text-xs ml-1 font-bold px-1.5 py-0.5 rounded",
+                              selected.change > 0
+                                ? "bg-green-100 text-green-700"
+                                : "bg-orange-100 text-orange-700"
+                            )}
+                          >
+                            {selected.change > 0 ? "INCOMING" : "OUTGOING"}
+                          </span>
+                        </div>
+                        <span className="text-[10px] uppercase text-slate-500 font-medium">
+                          Status:
+                        </span>
+                        <span
+                          className={cn(
+                            "text-xs ml-1 font-bold px-1.5 py-0.5 rounded",
+                            selected.bag_status === "available"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-orange-100 text-orange-700"
+                          )}
+                        >
+                          {selected.bag_status === "available"
+                            ? "AVAILABLE"
+                            : "USED"}
+                        </span>
+                      </div>
+
+                      {/* Right Column: Volume & Critical Info */}
+                      <div className="flex flex-col items-end justify-between text-right">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] uppercase text-gray-600 font-bold">
+                            Volume
+                          </span>
+                          <span className="text-lg font-black">
+                            {Math.abs(selected.change) * 450} ml
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Barcode */}
+                    <div className="pt-2 border-t border-black flex flex-col items-center gap-2">
+                      {/* Blood Bag IDs */}
+                      {/* Barcode */}
+                      <Barcode
+                        value={`BB-${selected.bag_ids || selected.bag_id}`} // unique barcode per row
+                        format="CODE128"
+                        width={1.5} // thickness of bars
+                        height={20} // height of the barcode
+                        displayValue={true} // show text below barcode
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">Change</p>
-                  <p
-                    className={`text-lg font-bold ${
-                      selected.change > 0 ? "text-green-600" : "text-orange-600"
-                    }`}
-                  >
-                    {selected.change > 0 ? "+" : ""}
-                    {selected.change} units
-                  </p>
-                </div>
-
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Units After
-                  </p>
-                  <p className="text-lg font-bold">
-                    {selected.units_after} units
-                  </p>
-                </div>
-              </div>
-
-              {/* Reason */}
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground mb-2">Reason</p>
-                <p className="text-sm">{selected.reason}</p>
-              </div>
-
-              {/* IDs */}
-              {selected.change > 0 && selected.donor_id && (
-                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                  <p className="text-xs text-green-700 dark:text-green-400 mb-1">
-                    Donor ID
-                  </p>
-                  <p className="font-mono text-sm">{selected.donor_id}</p>
-                </div>
-              )}
-
-              {selected.change < 0 && selected.recipient_id && (
-                <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                  <p className="text-xs text-orange-700 dark:text-orange-400 mb-1">
-                    Recipient ID
-                  </p>
-                  <p className="font-mono text-sm">{selected.recipient_id}</p>
-                </div>
-              )}
-
-              {/* Timestamp */}
-              <div className="pt-3 border-t text-center">
-                <p className="text-xs text-muted-foreground">
-                  {format(new Date(selected.changed_at), "PPPP")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(new Date(selected.changed_at), "p")}
-                </p>
-              </div>
-            </div>
-          )}
+              </BloodBag3D>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

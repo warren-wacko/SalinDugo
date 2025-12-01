@@ -6,7 +6,11 @@ import {
   loginUser,
   logoutUser,
   refreshTokenHandler,
+  changePassword,
+  forgotPassword,
+  resetPassword,
 } from "../controller/authController.js";
+import { authenticateToken } from "../middleware/authMiddleware.js";
 
 // Registration validation middleware
 const registerValidation = [
@@ -29,5 +33,7 @@ router.post("/register", registerValidation, registerUser);
 router.post("/login", loginUser);
 router.post("/logout", logoutUser);
 router.post("/refresh-token", refreshTokenHandler);
-
+router.patch("/change-password", authenticateToken, changePassword);
+router.post("/forgot-password", forgotPassword);
+router.post("/reset-password", resetPassword);
 export default router;

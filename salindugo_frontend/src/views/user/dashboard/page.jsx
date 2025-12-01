@@ -12,6 +12,15 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarInitials } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
 import {
   Select,
   SelectContent,
@@ -46,14 +55,13 @@ import {
   Package,
   Loader2,
   TextSearch,
-  HeartHandshake,
   X,
   AlertCircle,
+  HeartPlus,
 } from "lucide-react";
 import {
   Empty,
   EmptyHeader,
-  EmptyMedia,
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
@@ -63,6 +71,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 import Navbar from "../../../components/ui/navbar";
 import { AuthContext } from "../../../context/AuthContext";
 const DonationHistoryTab = lazy(() =>
@@ -76,9 +90,7 @@ import api from "../../../api/axios";
 export default function UnifiedDashboard() {
   const [mode, setMode] = useState("donate");
   const { user, accessToken } = useContext(AuthContext);
-  const [selectedUrgency, setSelectedUrgency] = useState("all");
   const [open, setOpen] = useState(false);
-  const [hospitals, setHospitals] = useState([]);
   const [formData, setFormData] = useState({
     id: user?.id || "",
     bloodType: user?.blood_type || "",
@@ -108,8 +120,14 @@ export default function UnifiedDashboard() {
 
   const [pendingRequest, setPendingRequest] = useState(null);
   const [loadingRequest, setLoadingRequest] = useState(true);
-  const [requestHistory, setRequestHistory] = useState([]);
-  const [loadingRequestHistory, setLoadingRequestHistory] = useState(false);
+
+  // Pagination for matches (donate mode)
+  const [donatePage, setDonatePage] = useState(1);
+  const donatePerPage = 5;
+
+  // Pagination for matches (request mode)
+  const [requestPage, setRequestPage] = useState(1);
+  const requestPerPage = 5;
 
   const userLocation = {
     latitude: user?.latitude || "14.5995",
@@ -316,11 +334,16 @@ export default function UnifiedDashboard() {
       const res = await api.post("/api/schedules", payload);
 
       console.log("Server response:", res.data);
-
-      toast.success("Donation Schedule Submitted", {
-        description:
-          "Your blood donation appointment has been scheduled successfully. Thank you for saving lives! ❤️",
-      });
+      if (user.age < 18) {
+        toast.warning(
+          "Schedule approved. Don't forget your parental consent—without it, the appointment may be invalid."
+        );
+      } else {
+        toast.success("Donation Schedule Submitted", {
+          description:
+            "Your blood donation appointment has been scheduled successfully. Thank you for saving lives! ❤️",
+        });
+      }
 
       // Reset form + close modal
       setOpen(false);
@@ -330,6 +353,18 @@ export default function UnifiedDashboard() {
       if (typeof window.refreshNotifications === "function") {
         window.refreshNotifications();
       }
+
+      // Refresh pending schedule immediately
+      const refreshPendingSchedule = async () => {
+        try {
+          const res = await api.get(`/api/schedules/pending/${user.id}`);
+          setPendingSchedule(res.data.schedule || null);
+        } catch (err) {
+          console.error("Error refreshing schedule:", err);
+        }
+      };
+
+      await refreshPendingSchedule();
     } catch (err) {
       console.error("Error scheduling donation:", err);
       console.error("Error response data:", err.response?.data);
@@ -406,9 +441,9 @@ export default function UnifiedDashboard() {
       const lastDonation = new Date(lastDonationRaw);
       if (isNaN(lastDonation.getTime())) return "Not available";
 
-      // ➕ add 35 days
+      // ➕ add 90 days
       const nextEligible = new Date(
-        lastDonation.getTime() + 35 * 24 * 60 * 60 * 1000
+        lastDonation.getTime() + 90 * 24 * 60 * 60 * 1000
       );
       const today = new Date();
 
@@ -565,12 +600,23 @@ export default function UnifiedDashboard() {
                             Fill in the details below to create a new blood
                             request.
                           </DialogDescription>
-
+                          <Separator className="mt-2" />
                           <Accordion type="single" collapsible>
                             <AccordionItem value="item-1">
-                              <AccordionTrigger className="font-bold text-lg text-primary mt-4">
-                                Requesting Blood Requirements
-                              </AccordionTrigger>
+                              <Tooltip className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)]">
+                                <TooltipTrigger asChild>
+                                  <AccordionTrigger className="font-bold text-lg text-primary mt-4">
+                                    Requesting Blood Requirements
+                                  </AccordionTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="right"
+                                  sideOffset={1}
+                                  className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
+                                >
+                                  <p>Click to view requirements.</p>
+                                </TooltipContent>
+                              </Tooltip>
 
                               <AccordionContent>
                                 <p>
@@ -578,7 +624,6 @@ export default function UnifiedDashboard() {
                                   hospital where the patient is admitted. The
                                   following details are needed:
                                 </p>
-
                                 <ul className="list-disc ml-5 mt-3">
                                   <li>Full name of the patient</li>
                                   <li>Age, Sex, Civil status</li>
@@ -684,11 +729,6 @@ export default function UnifiedDashboard() {
                         </form>
                       </DialogContent>
                     </Dialog>
-
-                    <Button variant="outline" className="w-full bg-transparent">
-                      <Phone className="h-4 w-4 mr-2" />
-                      Emergency Contact
-                    </Button>
                   </>
                 )}
               </CardContent>
@@ -738,7 +778,7 @@ export default function UnifiedDashboard() {
                               <Badge
                                 variant={
                                   pendingSchedule.status === "approved"
-                                    ? "default"
+                                    ? "success"
                                     : pendingSchedule.status === "pending"
                                     ? "secondary"
                                     : "outline"
@@ -799,7 +839,12 @@ export default function UnifiedDashboard() {
                                       Time
                                     </p>
                                     <p className="font-semibold">
-                                      {pendingSchedule.scheduled_time}
+                                      {new Date(
+                                        `1970-01-01T${pendingSchedule.scheduled_time}`
+                                      ).toLocaleTimeString("en-US", {
+                                        hour: "numeric",
+                                        minute: "2-digit",
+                                      })}
                                     </p>
                                   </div>
                                 </div>
@@ -853,11 +898,11 @@ export default function UnifiedDashboard() {
                             )}
 
                             {/* Action Buttons */}
-                            <div className="flex gap-2 md:w-133">
+                            <div className="flex flex-col sm:flex-row gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="w-full"
+                                className="w-full sm:flex-1 bg-transparent"
                                 onClick={() => {
                                   setSelectedHospital(pendingSchedule);
                                   setShowDirectionsMap(true);
@@ -869,7 +914,7 @@ export default function UnifiedDashboard() {
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                className="w-full bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
+                                className="w-full  sm:flex-1 bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
                                 onClick={() =>
                                   handleCancelSchedule(
                                     pendingSchedule.schedule_id
@@ -903,27 +948,12 @@ export default function UnifiedDashboard() {
                       <div className="flex items-center justify-between">
                         <div>
                           <h2 className="text-2xl font-bold">
-                            Hospitals Needing Blood
+                            Blood Centers Needing Blood
                           </h2>
                           <p className="text-muted-foreground">
-                            Find nearby hospitals and blood banks that need your
-                            blood type
+                            Find nearby blood centers that need your blood type
                           </p>
                         </div>
-                        <Select
-                          value={selectedUrgency}
-                          onValueChange={setSelectedUrgency}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Urgency</SelectItem>
-                            <SelectItem value="critical">Critical</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                          </SelectContent>
-                        </Select>
                       </div>
                     </div>
                   )}
@@ -935,224 +965,460 @@ export default function UnifiedDashboard() {
                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
                       </div>
                     ) : hospitalsNeedingBlood.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-6">
-                        No matching hospitals found for your blood type.
-                      </p>
+                      <Empty className="py-20 border-dashed border-2 rounded-xl bg-muted/20">
+                        <EmptyHeader>
+                          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                            <HandHeart className="h-8 w-8 text-red-700" />
+                          </div>
+                          <EmptyTitle className="text-lg font-semibold mb-2">
+                            No blood centers found
+                          </EmptyTitle>
+                          <EmptyDescription className="max-w-sm mx-auto mt-2">
+                            There are currently no blood centers in need of your
+                            blood type.
+                          </EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
                     ) : (
-                      hospitalsNeedingBlood.map((hospital, index) => (
-                        <Card
-                          key={hospital.request_id || `hospital-${index}`}
-                          className="hover:shadow-md transition-shadow"
-                        >
-                          <CardContent className="p-6">
-                            <div className="flex flex-col md:flex-row justify-between gap-4">
-                              {/* Left side: icon + main info */}
-                              <div className="flex items-start gap-4 flex-1">
-                                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                                  <Building2 className="h-6 w-6 text-primary" />
-                                </div>
-                                <div className="space-y-2 flex-1">
-                                  <h3 className="font-semibold text-lg">
-                                    {hospital.hospital_name}
-                                  </h3>
-
-                                  <div className="flex flex-wrap gap-2">
-                                    {hospital.blood_type_summary?.map((bt) => (
-                                      <Badge
-                                        key={bt.blood_type}
-                                        className={`text-xs px-3 py-1 ${
-                                          bt.units_needed ===
-                                          hospital.max_units_needed
-                                            ? "bg-red-600 text-white font-semibold animate-pulse"
-                                            : "bg-sky-100 text-gray-700"
-                                        }`}
-                                      >
-                                        {bt.blood_type} — {bt.units_needed}{" "}
-                                        units
-                                      </Badge>
-                                    ))}
+                      hospitalsNeedingBlood
+                        .slice(
+                          (donatePage - 1) * donatePerPage,
+                          donatePage * donatePerPage
+                        )
+                        .map((hospital, index) => (
+                          <Card
+                            key={hospital.request_id || `hospital-${index}`}
+                            className="hover:shadow-md transition-shadow"
+                          >
+                            <CardContent className="p-6">
+                              <div className="flex flex-col md:flex-row justify-between gap-4">
+                                {/* Left side: icon + main info */}
+                                <div className="flex items-start gap-4 flex-1">
+                                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <Building2 className="h-6 w-6 text-primary" />
                                   </div>
+                                  <div className="space-y-2 flex-1">
+                                    <h3 className="font-semibold text-lg">
+                                      {hospital.hospital_name}
+                                    </h3>
 
-                                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-1">
-                                      <MapPin className="h-3 w-3" />
-                                      {hospital.address}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      {hospital?.distance_km?.toFixed(1)} km
-                                      away
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Package className="h-3 w-3" />
-                                      {hospital.total_units_needed ?? 0} units
-                                      needed
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Phone className="h-3 w-3" />
-                                      {hospital.contact_number || "N/A"}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Right side: buttons */}
-                              <div className="flex flex-col gap-2 md:w-40">
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedHospital(hospital);
-                                    setShowDirectionsMap(true);
-                                  }}
-                                >
-                                  <Map className="h-3 w-3 mr-1" />
-                                  Get Directions
-                                </Button>
-
-                                {/* View More Dialog */}
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button size="sm" className="w-full">
-                                      <TextSearch className="h-3 w-3 mr-1" />
-                                      View More
-                                    </Button>
-                                  </DialogTrigger>
-
-                                  <DialogContent className="sm:max-w-[400px]">
-                                    <DialogHeader>
-                                      <DialogTitle>
-                                        {hospital.hospital_name}
-                                      </DialogTitle>
-                                      <DialogDescription>
-                                        Detailed breakdown of requested blood
-                                        types.
-                                      </DialogDescription>
-                                    </DialogHeader>
-
-                                    <div className="space-y-3 mt-4">
-                                      {hospital.blood_type_summary?.length >
-                                      0 ? (
-                                        hospital.blood_type_summary
-                                          ?.sort(
-                                            (a, b) =>
-                                              b.units_needed - a.units_needed
-                                          )
-                                          .map((item, idx) => (
-                                            <div
-                                              key={idx}
-                                              className={`flex justify-between border-b py-2 text-sm ${
-                                                idx === 0
-                                                  ? "text-red-600 font-semibold"
-                                                  : ""
-                                              }`}
-                                            >
-                                              <span className="font-medium">
-                                                {item.blood_type}
-                                              </span>
-                                              <span>
-                                                {item.units_needed} units
-                                              </span>
-                                            </div>
-                                          ))
-                                      ) : (
-                                        <p className="text-muted-foreground text-sm">
-                                          No detailed summary available.
-                                        </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {hospital.blood_type_summary?.map(
+                                        (bt) => (
+                                          <Badge
+                                            key={bt.blood_type}
+                                            className={`text-xs px-3 py-1 ${
+                                              bt.units_needed ===
+                                              hospital.max_units_needed
+                                                ? "bg-red-600 text-white font-semibold animate-pulse"
+                                                : "bg-sky-100 text-gray-700"
+                                            }`}
+                                          >
+                                            {bt.blood_type} — {bt.units_needed}{" "}
+                                            units
+                                          </Badge>
+                                        )
                                       )}
                                     </div>
-                                  </DialogContent>
-                                </Dialog>
 
-                                <Dialog open={open} onOpenChange={setOpen}>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      className="w-full"
-                                      disabled={
-                                        daysUntilEligible > 0 ||
-                                        !!pendingSchedule
-                                      }
-                                      title={
-                                        pendingSchedule
-                                          ? "You already have a pending donation schedule"
-                                          : daysUntilEligible > 0
-                                          ? `You can donate again in ${daysUntilEligible} day${
-                                              daysUntilEligible > 1 ? "s" : ""
-                                            }`
-                                          : "You are eligible to donate now!"
-                                      }
-                                      onClick={() => {
-                                        setSelectedHospital(hospital);
-                                        setOpen(true);
-                                      }}
-                                    >
-                                      <Droplet className="h-3 w-3 mr-1" />
-                                      {pendingSchedule
-                                        ? "Schedule Pending"
-                                        : daysUntilEligible > 0
-                                        ? "Not Eligible Yet"
-                                        : "Schedule Donation"}
-                                    </Button>
-                                  </DialogTrigger>
-
-                                  <DialogContent>
-                                    <DialogHeader>
-                                      <DialogTitle>
-                                        Set Donation Appointment
-                                      </DialogTitle>
-                                    </DialogHeader>
-                                    <form onSubmit={handleDonateSubmit}>
-                                      <div className="space-y-3">
-                                        <Label>Date</Label>
-                                        <Input
-                                          type="date"
-                                          value={donationFormData.date}
-                                          onChange={(e) =>
-                                            setDonationFormData({
-                                              ...donationFormData,
-                                              date: e.target.value,
-                                            })
-                                          }
-                                        />
-                                        <Label>Time</Label>
-                                        <Input
-                                          type="time"
-                                          value={donationFormData.time}
-                                          onChange={(e) =>
-                                            setDonationFormData({
-                                              ...donationFormData,
-                                              time: e.target.value,
-                                            })
-                                          }
-                                        />
-                                        <Label>Hospital</Label>
-                                        <Input
-                                          value={
-                                            selectedHospital?.hospital_name ||
-                                            ""
-                                          }
-                                          readOnly
-                                          disabled
-                                        />
+                                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                                      <div className="flex items-center gap-1">
+                                        <MapPin className="h-3 w-3" />
+                                        {hospital.address}
                                       </div>
-                                      <DialogFooter className="pt-4">
-                                        <Button
-                                          type="submit"
-                                          className="w-full"
-                                        >
-                                          Confirm Schedule
-                                        </Button>
-                                      </DialogFooter>
-                                    </form>
-                                  </DialogContent>
-                                </Dialog>
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {hospital?.distance_km?.toFixed(1)} km
+                                        away
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Package className="h-3 w-3" />
+                                        {hospital.total_units_needed ?? 0} units
+                                        needed
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Phone className="h-3 w-3" />
+                                        {hospital.contact_number || "N/A"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right side: buttons */}
+                                <div className="flex flex-col gap-2 md:w-40">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedHospital(hospital);
+                                      setShowDirectionsMap(true);
+                                    }}
+                                  >
+                                    <Map className="h-3 w-3 mr-1" />
+                                    Get Directions
+                                  </Button>
+
+                                  {/* View More Dialog */}
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button size="sm" className="w-full">
+                                        <TextSearch className="h-3 w-3 mr-1" />
+                                        View More
+                                      </Button>
+                                    </DialogTrigger>
+
+                                    <DialogContent className="sm:max-w-[400px]">
+                                      <DialogHeader>
+                                        <DialogTitle>
+                                          {hospital.hospital_name}
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                          Detailed breakdown of requested blood
+                                          types.
+                                        </DialogDescription>
+                                      </DialogHeader>
+
+                                      <div className="space-y-3 mt-4">
+                                        {hospital.blood_type_summary?.length >
+                                        0 ? (
+                                          hospital.blood_type_summary
+                                            ?.sort(
+                                              (a, b) =>
+                                                b.units_needed - a.units_needed
+                                            )
+                                            .map((item, idx) => (
+                                              <div
+                                                key={idx}
+                                                className={`flex justify-between items-center p-3 rounded-lg border ${
+                                                  idx === 0
+                                                    ? "bg-red-50 border-red-200"
+                                                    : "bg-gray-50 border-gray-200"
+                                                }`}
+                                              >
+                                                <div>
+                                                  <span
+                                                    className={`font-semibold ${
+                                                      idx === 0
+                                                        ? "text-red-700"
+                                                        : "text-gray-700"
+                                                    }`}
+                                                  >
+                                                    {item.blood_type}
+                                                  </span>
+                                                </div>
+                                                <Badge
+                                                  className={
+                                                    idx === 0
+                                                      ? "bg-red-600 text-white"
+                                                      : "bg-gray-200 text-gray-700"
+                                                  }
+                                                >
+                                                  {item.units_needed} units
+                                                </Badge>
+                                              </div>
+                                            ))
+                                        ) : (
+                                          <p className="text-muted-foreground text-sm">
+                                            No detailed summary available.
+                                          </p>
+                                        )}
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
+
+                                  <Dialog open={open} onOpenChange={setOpen}>
+                                    <DialogTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        className="w-full"
+                                        disabled={
+                                          daysUntilEligible > 0 ||
+                                          !!pendingSchedule
+                                        }
+                                        title={
+                                          pendingSchedule
+                                            ? "You already have a pending donation schedule"
+                                            : daysUntilEligible > 0
+                                            ? `You can donate again in ${daysUntilEligible} day${
+                                                daysUntilEligible > 1 ? "s" : ""
+                                              }`
+                                            : "You are eligible to donate now!"
+                                        }
+                                        onClick={() => {
+                                          setSelectedHospital(hospital);
+                                          setOpen(true);
+                                        }}
+                                      >
+                                        <Droplet className="h-3 w-3 mr-1" />
+                                        {pendingSchedule
+                                          ? "Schedule Pending"
+                                          : daysUntilEligible > 0
+                                          ? "Not Eligible Yet"
+                                          : "Schedule Donation"}
+                                      </Button>
+                                    </DialogTrigger>
+
+                                    <DialogContent>
+                                      <DialogHeader>
+                                        <DialogTitle>
+                                          Set Donation Appointment
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                          Fill in the details below to create a
+                                          donation schedule.
+                                        </DialogDescription>
+                                        <Separator className="mt-5" />
+                                        <Accordion type="single" collapsible>
+                                          <AccordionItem value="item-1">
+                                            <Tooltip className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)]">
+                                              <TooltipTrigger asChild>
+                                                <AccordionTrigger className="font-bold text-lg text-primary mt-4">
+                                                  Donation Requirements and
+                                                  Preparations
+                                                </AccordionTrigger>
+                                              </TooltipTrigger>
+                                              <TooltipContent
+                                                side="right"
+                                                sideOffset={1}
+                                                className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
+                                              >
+                                                <p>
+                                                  Click to view requirements.
+                                                </p>
+                                              </TooltipContent>
+                                            </Tooltip>
+
+                                            <AccordionContent>
+                                              <p>A blood donor must:</p>
+                                              <ul className="list-disc ml-5 mt-3">
+                                                <li>Be in good health.</li>
+                                                <li>
+                                                  Be between 16-65 years old
+                                                  (Donors 16-17 years old need
+                                                  parental consent).
+                                                </li>
+                                                <li>
+                                                  Weight at least 110 pounds.
+                                                </li>
+                                                <li>
+                                                  Pass the physical and history
+                                                  screening.
+                                                </li>
+                                              </ul>
+                                              <Separator className="mt-5 mb-5"></Separator>
+                                              <p>Before donating:</p>
+                                              <ul className="list-disc ml-5 mt-3">
+                                                <li>
+                                                  Minimum of 5 hours
+                                                  uninterrupted sleep.
+                                                </li>
+                                                <li>
+                                                  No alcohol intake 24 hours
+                                                  prior to donating blood.
+                                                </li>
+                                                <li>
+                                                  Generally in good health
+                                                  condition.
+                                                </li>
+                                                <li>
+                                                  In case of medication(s)
+                                                  taken, the medical officer
+                                                  will assess if the donor is
+                                                  acceptable to donate blood.
+                                                </li>
+                                                <li>
+                                                  Avoid eating fatty meal on or
+                                                  before the day of blood
+                                                  donation.
+                                                </li>
+                                                <li>
+                                                  Donors with body piercing and
+                                                  tattoos are accepted to donate
+                                                  blood one (1) year after the
+                                                  procedure.
+                                                </li>
+                                                <li>
+                                                  Must not smoke cigarette at
+                                                  least 3 to 4 hours prior the
+                                                  activity.
+                                                </li>
+                                              </ul>
+                                            </AccordionContent>
+                                          </AccordionItem>
+                                        </Accordion>
+
+                                        <Separator className="mt-5"></Separator>
+
+                                        <Accordion type="single" collapsible>
+                                          <AccordionItem value="item-1">
+                                            <Tooltip className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)]">
+                                              <TooltipTrigger asChild>
+                                                <AccordionTrigger className="font-bold text-lg text-primary mt-4">
+                                                  Donation Process
+                                                </AccordionTrigger>
+                                              </TooltipTrigger>
+                                              <TooltipContent
+                                                side="right"
+                                                sideOffset={1}
+                                                className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
+                                              >
+                                                <p>Click to view process.</p>
+                                              </TooltipContent>
+                                            </Tooltip>
+
+                                            <AccordionContent>
+                                              <p>A blood donor must:</p>
+                                              <ul className="list-disc ml-5 mt-3">
+                                                <li>
+                                                  Register and have your weight
+                                                  taken.
+                                                </li>
+                                                <li>
+                                                  Complete the Donor History
+                                                  Questionnaire.
+                                                </li>
+                                                <li>
+                                                  Be interviewed and have your
+                                                  blood type and hemoglobin
+                                                  status checked.
+                                                </li>
+                                                <li>
+                                                  A physician will check your
+                                                  blood pressure and give you a
+                                                  physical exam.
+                                                </li>
+                                                <li>
+                                                  Actual blood letting donations
+                                                  lasts 10-15 minutes. You will
+                                                  be required to remain lying
+                                                  down for another 10 minutes
+                                                  after donating.
+                                                </li>
+                                              </ul>
+                                            </AccordionContent>
+                                          </AccordionItem>
+                                        </Accordion>
+                                      </DialogHeader>
+                                      <form onSubmit={handleDonateSubmit}>
+                                        <div className="space-y-3">
+                                          <Label>Date</Label>
+
+                                          <Popover>
+                                            <PopoverTrigger asChild>
+                                              <Button
+                                                variant="outline"
+                                                className="w-full justify-start text-left font-normal"
+                                              >
+                                                {donationFormData.date ? (
+                                                  format(
+                                                    new Date(
+                                                      donationFormData.date
+                                                    ),
+                                                    "PPP"
+                                                  )
+                                                ) : (
+                                                  <span>Pick a date</span>
+                                                )}
+                                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                              </Button>
+                                            </PopoverTrigger>
+
+                                            <PopoverContent className="w-auto p-0">
+                                              <Calendar
+                                                mode="single"
+                                                selected={
+                                                  donationFormData.date
+                                                    ? new Date(
+                                                        donationFormData.date
+                                                      )
+                                                    : undefined
+                                                }
+                                                onSelect={(date) =>
+                                                  setDonationFormData({
+                                                    ...donationFormData,
+                                                    date: date
+                                                      ? format(
+                                                          date,
+                                                          "yyyy-MM-dd"
+                                                        )
+                                                      : "",
+                                                  })
+                                                }
+                                                initialFocus
+                                              />
+                                            </PopoverContent>
+                                          </Popover>
+
+                                          <Label>Time</Label>
+                                          <Input
+                                            type="time"
+                                            value={donationFormData.time}
+                                            onChange={(e) =>
+                                              setDonationFormData({
+                                                ...donationFormData,
+                                                time: e.target.value,
+                                              })
+                                            }
+                                          />
+                                          <Label>Hospital</Label>
+                                          <Input
+                                            value={
+                                              selectedHospital?.hospital_name ||
+                                              ""
+                                            }
+                                            readOnly
+                                            disabled
+                                          />
+                                        </div>
+                                        <DialogFooter className="pt-4">
+                                          <Button
+                                            type="submit"
+                                            className="w-full"
+                                          >
+                                            Confirm Schedule
+                                          </Button>
+                                        </DialogFooter>
+                                      </form>
+                                    </DialogContent>
+                                  </Dialog>
+                                </div>
                               </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
+                            </CardContent>
+                          </Card>
+                        ))
                     )}
                   </div>
+                  {/* Pagination – donate mode */}
+                  {hospitalsNeedingBlood.length > donatePerPage && (
+                    <div className="flex justify-center items-center gap-4 mt-4">
+                      <Button
+                        variant="outline"
+                        disabled={donatePage === 1}
+                        onClick={() => setDonatePage((p) => p - 1)}
+                      >
+                        Prev
+                      </Button>
+
+                      <span className="text-sm">
+                        Page {donatePage} of{" "}
+                        {Math.ceil(
+                          hospitalsNeedingBlood.length / donatePerPage
+                        )}
+                      </span>
+
+                      <Button
+                        variant="outline"
+                        disabled={
+                          donatePage >=
+                          Math.ceil(
+                            hospitalsNeedingBlood.length / donatePerPage
+                          )
+                        }
+                        onClick={() => setDonatePage((p) => p + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* History Tab */}
@@ -1190,14 +1456,14 @@ export default function UnifiedDashboard() {
                   {/* 🆕 Show pending request if exists */}
                   {!loadingRequest && pendingRequest ? (
                     <div className="space-y-6">
-                      <Card className="border-2 border-blue-500">
+                      <Card className="border-2 border-red-300">
                         <CardContent className="p-6">
                           <div className="space-y-4">
                             {/* Header */}
                             <div className="flex items-start justify-between">
                               <div className="flex items-start gap-4">
-                                <div className="h-12 w-12 rounded-lg bg-blue-500 flex items-center justify-center">
-                                  <HeartPulse className="h-6 w-6 text-white" />
+                                <div className="h-12 w-12 rounded-lg bg-primary flex items-center justify-center">
+                                  <HeartPulse className="h-6 w-6 text-primary-foreground" />
                                 </div>
                                 <div>
                                   <h3 className="text-lg font-bold">
@@ -1211,10 +1477,10 @@ export default function UnifiedDashboard() {
                               <Badge
                                 variant={
                                   pendingRequest.status === "fulfilled"
-                                    ? "default"
+                                    ? "success"
                                     : pendingRequest.status === "open" ||
                                       pendingRequest.status === "matched"
-                                    ? "secondary"
+                                    ? "open"
                                     : "destructive"
                                 }
                                 className="px-3 py-1 text-xs font-semibold uppercase tracking-wide"
@@ -1227,8 +1493,8 @@ export default function UnifiedDashboard() {
                             <div className="bg-muted/50 rounded-lg p-4 space-y-4 border">
                               {/* Hospital Name */}
                               <div className="flex items-center gap-3 pb-3 border-b">
-                                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                  <Building2 className="h-5 w-5 text-blue-600" />
+                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <Building2 className="h-5 w-5 text-primary" />
                                 </div>
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1244,8 +1510,8 @@ export default function UnifiedDashboard() {
                               <div className="grid grid-cols-2 gap-4">
                                 {/* Blood Type */}
                                 <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                                    <Droplet className="h-5 w-5 text-blue-600" />
+                                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Droplet className="h-5 w-5 text-primary" />
                                   </div>
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1259,8 +1525,8 @@ export default function UnifiedDashboard() {
 
                                 {/* Units Needed */}
                                 <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                                    <Package className="h-5 w-5 text-blue-600" />
+                                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Package className="h-5 w-5 text-primary" />
                                   </div>
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1277,8 +1543,8 @@ export default function UnifiedDashboard() {
                               <div className="grid grid-cols-2 gap-4 pt-3 border-t">
                                 {/* Urgency */}
                                 <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                                    <AlertCircle className="h-5 w-5 text-blue-600" />
+                                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <AlertCircle className="h-5 w-5 text-primary" />
                                   </div>
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1292,8 +1558,8 @@ export default function UnifiedDashboard() {
 
                                 {/* Request Date */}
                                 <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                                    <Clock className="h-5 w-5 text-blue-600" />
+                                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Clock className="h-5 w-5 text-primary" />
                                   </div>
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1315,13 +1581,13 @@ export default function UnifiedDashboard() {
                             {/* Status Messages */}
                             {(pendingRequest.status === "open" ||
                               pendingRequest.status === "matched") && (
-                              <div className="bg-yellow-50 rounded-lg p-4 flex items-start gap-3 border border-yellow-200">
-                                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                              <div className="bg-muted rounded-lg p-4 flex items-start gap-3 border">
+                                <AlertCircle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <p className="text-sm font-semibold text-yellow-900">
+                                  <p className="text-sm font-semibold">
                                     Request Under Review
                                   </p>
-                                  <p className="text-xs text-yellow-800 mt-1">
+                                  <p className="text-xs text-muted-foreground mt-1">
                                     The blood center is checking their
                                     inventory. They will contact you if they can
                                     fulfill this request.
@@ -1360,11 +1626,11 @@ export default function UnifiedDashboard() {
                             )}
 
                             {/* Action Buttons */}
-                            <div className="flex gap-2 md:w-133">
+                            <div className="flex flex-col sm:flex-row gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="w-full"
+                                className="w-full sm:flex-1 bg-transparent"
                                 onClick={() => {
                                   setSelectedHospital({
                                     hospital_id: pendingRequest.hospital_id,
@@ -1386,7 +1652,7 @@ export default function UnifiedDashboard() {
                                 <Button
                                   size="sm"
                                   variant="destructive"
-                                  className="w-full bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
+                                  className="w-full sm:flex-1 bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
                                   onClick={() =>
                                     handleCancelRequest(
                                       pendingRequest.request_id
@@ -1438,15 +1704,15 @@ export default function UnifiedDashboard() {
                       <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
                   ) : bloodCentersAvailable.length === 0 ? (
-                    <Empty className="py-16">
+                    <Empty className="py-20 border-dashed border-2 rounded-xl bg-muted/20">
                       <EmptyHeader>
-                        <EmptyMedia variant="icon">
-                          <HeartHandshake className="h-8 w-8 text-red-700" />
-                        </EmptyMedia>
-                        <EmptyTitle className="text-lg font-semibold">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                          <HeartPlus className="h-8 w-8 text-red-700" />
+                        </div>
+                        <EmptyTitle className="text-lg font-semibold mb-2">
                           No blood stock records found
                         </EmptyTitle>
-                        <EmptyDescription>
+                        <EmptyDescription className="max-w-sm mx-auto mt-2">
                           No blood bank centers with your blood type in stock at
                           the moment.
                         </EmptyDescription>
@@ -1454,163 +1720,202 @@ export default function UnifiedDashboard() {
                     </Empty>
                   ) : (
                     <div className="space-y-4">
-                      {bloodCentersAvailable.map((center, index) => (
-                        <Card
-                          key={center.hospital_id || `center-${index}`}
-                          className="hover:shadow-md transition-shadow"
-                        >
-                          <CardContent className="p-6">
-                            <div className="flex flex-col md:flex-row justify-between gap-4">
-                              {/* Left side: icon + main info */}
-                              <div className="flex items-start gap-4 flex-1">
-                                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                                  <Building2 className="h-6 w-6 text-primary" />
-                                </div>
-                                <div className="space-y-2 flex-1">
-                                  <h3 className="font-semibold text-lg">
-                                    {center.hospital_name}
-                                  </h3>
+                      {bloodCentersAvailable
+                        .slice(
+                          (requestPage - 1) * requestPerPage,
+                          requestPage * requestPerPage
+                        )
+                        .map((center, index) => (
+                          <Card
+                            key={center.hospital_id || `center-${index}`}
+                            className="hover:shadow-md transition-shadow"
+                          >
+                            <CardContent className="p-6">
+                              <div className="flex flex-col md:flex-row justify-between gap-4">
+                                {/* Left side: icon + main info */}
+                                <div className="flex items-start gap-4 flex-1">
+                                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <Building2 className="h-6 w-6 text-primary" />
+                                  </div>
+                                  <div className="space-y-2 flex-1">
+                                    <h3 className="font-semibold text-lg">
+                                      {center.hospital_name}
+                                    </h3>
 
-                                  <div className="flex flex-wrap gap-2">
-                                    {center.blood_type_summary?.map((bt) => (
-                                      <Badge
-                                        key={bt.blood_type}
-                                        className={`text-xs px-3 py-1 ${
-                                          bt.units_available >= 10
-                                            ? "bg-green-600 text-white font-semibold"
-                                            : bt.units_available >= 5
-                                            ? "bg-yellow-600 text-white"
-                                            : "bg-red-600 text-white"
-                                        }`}
+                                    <div className="flex flex-wrap gap-2">
+                                      {center.blood_type_summary?.map((bt) => (
+                                        <Badge
+                                          key={bt.blood_type}
+                                          className={`text-xs px-3 py-1 ${
+                                            bt.units_available >= 10
+                                              ? "bg-green-600 text-white font-semibold"
+                                              : bt.units_available >= 5
+                                              ? "bg-yellow-600 text-white"
+                                              : "bg-red-600 text-white"
+                                          }`}
+                                        >
+                                          {bt.blood_type} — {bt.units_available}{" "}
+                                          units
+                                        </Badge>
+                                      ))}
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                                      <div className="flex items-center gap-1">
+                                        <MapPin className="h-3 w-3" />
+                                        {center.address}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {center?.distance_km?.toFixed(1)} km
+                                        away
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Package className="h-3 w-3" />
+                                        {center.total_units_available ?? 0}{" "}
+                                        units available
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Phone className="h-3 w-3" />
+                                        {center.contact_number || "N/A"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right side: buttons */}
+                                <div className="flex flex-col gap-2 md:w-40">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedHospital(center);
+                                      setShowDirectionsMap(true);
+                                    }}
+                                  >
+                                    <Map className="h-4 w-4 mr-1" />
+                                    Get Directions
+                                  </Button>
+
+                                  {/* Stock Details Dialog */}
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="w-full bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
                                       >
-                                        {bt.blood_type} — {bt.units_available}{" "}
-                                        units
-                                      </Badge>
-                                    ))}
-                                  </div>
+                                        <TextSearch className="h-4 w-4 mr-1" />
+                                        Stock Details
+                                      </Button>
+                                    </DialogTrigger>
 
-                                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-1">
-                                      <MapPin className="h-3 w-3" />
-                                      {center.address}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      {center?.distance_km?.toFixed(1)} km away
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Package className="h-3 w-3" />
-                                      {center.total_units_available ?? 0} units
-                                      available
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Phone className="h-3 w-3" />
-                                      {center.contact_number || "N/A"}
-                                    </div>
-                                  </div>
+                                    <DialogContent className="sm:max-w-[400px]">
+                                      <DialogHeader>
+                                        <DialogTitle>
+                                          {center.hospital_name}
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                          Available blood stock details
+                                        </DialogDescription>
+                                      </DialogHeader>
+
+                                      <div className="space-y-3 mt-4">
+                                        {center.blood_type_summary?.length >
+                                        0 ? (
+                                          center.blood_type_summary
+                                            ?.sort(
+                                              (a, b) =>
+                                                b.units_available -
+                                                a.units_available
+                                            )
+                                            .map((item, idx) => (
+                                              <div
+                                                key={idx}
+                                                className={`flex justify-between items-center p-3 rounded-lg border ${
+                                                  idx === 0
+                                                    ? "bg-green-50 border-green-200"
+                                                    : "bg-gray-50 border-gray-200"
+                                                }`}
+                                              >
+                                                <div>
+                                                  <span
+                                                    className={`font-semibold ${
+                                                      idx === 0
+                                                        ? "text-green-700"
+                                                        : "text-gray-700"
+                                                    }`}
+                                                  >
+                                                    {item.blood_type}
+                                                  </span>
+                                                </div>
+                                                <Badge
+                                                  className={
+                                                    idx === 0
+                                                      ? "bg-green-600"
+                                                      : "bg-gray-500"
+                                                  }
+                                                >
+                                                  {item.units_available} units
+                                                </Badge>
+                                              </div>
+                                            ))
+                                        ) : (
+                                          <p className="text-center text-muted-foreground py-4">
+                                            No stock details available
+                                          </p>
+                                        )}
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
+
+                                  <Button
+                                    size="sm"
+                                    className="w-full bg-primary hover:bg-primary/90"
+                                    onClick={() => {
+                                      setSelectedCenterForRequest(center);
+                                      setOpen(true);
+                                    }}
+                                  >
+                                    <Zap className="h-4 w-4 mr-1" />
+                                    Request Blood
+                                  </Button>
                                 </div>
                               </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                    </div>
+                  )}
+                  {/* Pagination – request mode */}
+                  {bloodCentersAvailable.length > requestPerPage && (
+                    <div className="flex justify-center items-center gap-4 mt-4">
+                      <Button
+                        variant="outline"
+                        disabled={requestPage === 1}
+                        onClick={() => setRequestPage((p) => p - 1)}
+                      >
+                        Prev
+                      </Button>
 
-                              {/* Right side: buttons */}
-                              <div className="flex flex-col gap-2 md:w-40">
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedHospital(center);
-                                    setShowDirectionsMap(true);
-                                  }}
-                                >
-                                  <Map className="h-4 w-4 mr-1" />
-                                  Get Directions
-                                </Button>
+                      <span className="text-sm">
+                        Page {requestPage} of{" "}
+                        {Math.ceil(
+                          bloodCentersAvailable.length / requestPerPage
+                        )}
+                      </span>
 
-                                {/* Stock Details Dialog */}
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="w-full bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
-                                    >
-                                      <TextSearch className="h-4 w-4 mr-1" />
-                                      Stock Details
-                                    </Button>
-                                  </DialogTrigger>
-
-                                  <DialogContent className="sm:max-w-[400px]">
-                                    <DialogHeader>
-                                      <DialogTitle>
-                                        {center.hospital_name}
-                                      </DialogTitle>
-                                      <DialogDescription>
-                                        Available blood stock details
-                                      </DialogDescription>
-                                    </DialogHeader>
-
-                                    <div className="space-y-3 mt-4">
-                                      {center.blood_type_summary?.length > 0 ? (
-                                        center.blood_type_summary
-                                          ?.sort(
-                                            (a, b) =>
-                                              b.units_available -
-                                              a.units_available
-                                          )
-                                          .map((item, idx) => (
-                                            <div
-                                              key={idx}
-                                              className={`flex justify-between items-center p-3 rounded-lg border ${
-                                                idx === 0
-                                                  ? "bg-green-50 border-green-200"
-                                                  : "bg-gray-50 border-gray-200"
-                                              }`}
-                                            >
-                                              <div>
-                                                <span
-                                                  className={`font-semibold ${
-                                                    idx === 0
-                                                      ? "text-green-700"
-                                                      : "text-gray-700"
-                                                  }`}
-                                                >
-                                                  {item.blood_type}
-                                                </span>
-                                              </div>
-                                              <Badge
-                                                className={
-                                                  idx === 0
-                                                    ? "bg-green-600"
-                                                    : "bg-gray-500"
-                                                }
-                                              >
-                                                {item.units_available} units
-                                              </Badge>
-                                            </div>
-                                          ))
-                                      ) : (
-                                        <p className="text-center text-muted-foreground py-4">
-                                          No stock details available
-                                        </p>
-                                      )}
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-
-                                <Button
-                                  size="sm"
-                                  className="w-full bg-primary hover:bg-primary/90"
-                                  onClick={() => {
-                                    setSelectedCenterForRequest(center);
-                                    setOpen(true);
-                                  }}
-                                >
-                                  <Zap className="h-4 w-4 mr-1" />
-                                  Request Blood
-                                </Button>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                      <Button
+                        variant="outline"
+                        disabled={
+                          requestPage >=
+                          Math.ceil(
+                            bloodCentersAvailable.length / requestPerPage
+                          )
+                        }
+                        onClick={() => setRequestPage((p) => p + 1)}
+                      >
+                        Next
+                      </Button>
                     </div>
                   )}
                 </TabsContent>

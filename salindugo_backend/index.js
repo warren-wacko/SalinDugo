@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import dotenv from "dotenv";
 import "./cron/reactivateDonors.js";
@@ -13,8 +14,12 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import matchingRoutes from "./routes/matchingRoutes.js";
 import inventoryRoutes from "./routes/inventoryRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
+import demandRoutes from "./routes/demandRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 const app = express();
+
+app.use(helmet());
 dotenv.config();
 
 app.use(cors());
@@ -30,6 +35,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/matching", matchingRoutes);
 app.use("/api/stocks", inventoryRoutes);
 app.use("/api/location", locationRoutes);
+app.use("/api/demand", demandRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.send("API is running...");

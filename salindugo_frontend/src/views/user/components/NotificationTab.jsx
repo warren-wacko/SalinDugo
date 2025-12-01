@@ -115,9 +115,9 @@ export function NotificationTab({ accessToken }) {
           Loading...
         </div>
       ) : notifications.length === 0 ? (
-        <Empty className="py-16">
+        <Empty className="py-20 border-dashed border-2 rounded-xl bg-muted/20">
           <EmptyHeader>
-            <EmptyMedia variant="icon">
+            <EmptyMedia className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
               <MessageSquareHeart className="h-8 w-8 text-red-700" />
             </EmptyMedia>
             <EmptyTitle className="text-lg font-semibold">

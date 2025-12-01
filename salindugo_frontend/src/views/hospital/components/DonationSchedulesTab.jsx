@@ -1,5 +1,4 @@
 import { useEffect, useState, useContext, useMemo } from "react";
-import axios from "axios";
 import { AuthContext } from "../../../context/AuthContext";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";

@@ -33,29 +33,38 @@ export const updateUserProfile = async (req, res) => {
       zip_code,
       latitude,
       longitude,
+      title,
+      civil_status,
+      age,
     } = req.body;
 
     const result = await pool.query(
       `UPDATE users 
        SET 
-         contact_number = COALESCE($1, contact_number),
-         weight = COALESCE($2, weight),
-         height = COALESCE($3, height),
-         medical_conditions = COALESCE($4, medical_conditions),
-         allergies = COALESCE($5, allergies),
-         address = COALESCE($6, address),
-         city = COALESCE($7, city),
-         province = COALESCE($8, province),
-         region = COALESCE($9, region),
-         zip_code = COALESCE($10, zip_code),
-         latitude = COALESCE($11, latitude),
-         longitude = COALESCE($12, longitude),
+         contact_number    = COALESCE(NULLIF($1, '')::text, contact_number),
+
+         weight            = COALESCE(NULLIF($2, '')::numeric, weight),
+         height            = COALESCE(NULLIF($3, '')::numeric, height),
+         medical_conditions = COALESCE(NULLIF($4, '')::text, medical_conditions),
+         allergies         = COALESCE(NULLIF($5, '')::text, allergies),
+
+         address           = COALESCE(NULLIF($6, '')::text, address),
+         city              = COALESCE(NULLIF($7, '')::text, city),
+         province          = COALESCE(NULLIF($8, '')::text, province),
+         region            = COALESCE(NULLIF($9, '')::text, region),
+         zip_code          = COALESCE(NULLIF($10, '')::text, zip_code),
+
+         latitude          = COALESCE(NULLIF($11, '')::numeric, latitude),
+         longitude         = COALESCE(NULLIF($12, '')::numeric, longitude),
+
+         title             = COALESCE(NULLIF($14, '')::text, title),
+         civil_status      = COALESCE(NULLIF($15, '')::text, civil_status),
+         age               = COALESCE(NULLIF($16, '')::numeric, age),
+
          profile_completed = TRUE,
          updated_at = NOW()
        WHERE user_id = $13
-       RETURNING user_id, full_name, email, blood_type, contact_number, 
-                 weight, height, medical_conditions, allergies, address, 
-                 city, province, region, zip_code, latitude, longitude, profile_completed, updated_at`,
+       RETURNING *`,
       [
         contact_number,
         weight,
@@ -70,6 +79,9 @@ export const updateUserProfile = async (req, res) => {
         latitude,
         longitude,
         id,
+        title,
+        civil_status,
+        age,
       ]
     );
 
