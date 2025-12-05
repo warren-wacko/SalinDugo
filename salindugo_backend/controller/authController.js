@@ -78,7 +78,7 @@ export const registerUser = async (req, res) => {
 
     // store refresh token in Refresh_Tokens table
     await pool.query(
-      "INSERT INTO Refresh_Tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
+      "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
       [newUser.rows[0].user_id, refreshToken]
     );
 
@@ -152,7 +152,7 @@ export const loginUser = async (req, res) => {
 
     // store refresh token
     await pool.query(
-      "INSERT INTO Refresh_Tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
+      "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
       [user.rows[0].user_id, refreshToken]
     );
 
@@ -202,7 +202,7 @@ export const logoutUser = async (req, res) => {
     if (!refreshToken) return res.sendStatus(400);
 
     await pool.query(
-      "UPDATE Refresh_Tokens SET revoked=true WHERE token_hash=$1",
+      "UPDATE refresh_tokens SET revoked=true WHERE token_hash=$1",
       [refreshToken]
     );
     await logAudit(req.user.id, "logout", "security");
