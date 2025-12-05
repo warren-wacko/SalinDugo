@@ -18,6 +18,7 @@ import locationRoutes from "./routes/locationRoutes.js";
 import demandRoutes from "./routes/demandRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
+import pool from "./db.js";
 const app = express();
 
 app.use(helmet());
