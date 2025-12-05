@@ -182,8 +182,14 @@ export const loginUser = async (req, res) => {
       },
     });
   } catch (err) {
-    await logAudit(null, "login_failed", "security", { email });
-    res.status(500).json({ message: "Server error", error: err.message });
+    const safeEmail = req.body?.email || "unknown";
+
+    await logAudit(null, "login_failed", "security", { email: safeEmail });
+
+    return res.status(500).json({
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
