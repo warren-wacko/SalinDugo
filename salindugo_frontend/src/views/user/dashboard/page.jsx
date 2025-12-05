@@ -394,36 +394,6 @@ export default function UnifiedDashboard() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!accessToken || !user) return;
-
-    const fetchMatches = async () => {
-      setLoadingMatches(true);
-      try {
-        if (mode === "donate") {
-          // Donor looking for hospitals needing blood
-          const res = await api.get("/api/matching/donor", {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          setHospitalsNeedingBlood(res.data.matches || []);
-        } else {
-          // Hospital looking for donors or available stock (if you implement later)
-          const res = await api.get("/api/matching/hospital/1", {
-            // You can dynamically pass request_id once you hook requests
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          setHospitalsWithBloodStock(res.data.matches || []);
-        }
-      } catch (err) {
-        console.error("Error fetching matches:", err);
-      } finally {
-        setLoadingMatches(false);
-      }
-    };
-
-    fetchMatches();
-  }, [mode, accessToken, user]);
-
   const userProfile = {
     ...user, // Spread user fields (from AuthContext or localStorage)
     name: user?.full_name || "",
