@@ -1,5 +1,8 @@
 import express from "express";
-import { getDemandForecast } from "../controller/demandController.js";
+import {
+  getDemandForecast,
+  getAdminDemandForecast,
+} from "../controller/demandController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();

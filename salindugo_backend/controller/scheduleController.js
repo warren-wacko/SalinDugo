@@ -341,9 +341,9 @@ export const updateSchedule = async (req, res) => {
 
       // Add new blood bag (for this donation)
       const bagResult = await client.query(
-        `INSERT INTO blood_bags (hospital_id, blood_type, status, created_at, donation_id)
-         VALUES ($1, $2, 'available', NOW(), $3)
-         RETURNING bag_id`,
+        `INSERT INTO blood_bags (hospital_id, blood_type, status, created_at, expiration_date, donation_id)
+   VALUES ($1, $2, 'available', NOW(), NOW() + INTERVAL '35 days', $3)
+   RETURNING bag_id`,
         [schedule.hospital_id, schedule.blood_type, donation.donation_id]
       );
       const bagId = bagResult.rows[0].bag_id;

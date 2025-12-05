@@ -1,8 +1,4 @@
-"use client";
-
-import { useContext } from "react";
-
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +21,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const { login } = useContext(AuthContext);
@@ -125,6 +122,7 @@ export default function LoginPage() {
           submit:
             data.message || "Login failed. Please check your credentials.",
         }));
+        toast.error(data.message || "An error occurred during login.");
       }
     } catch (err) {
       console.error(err);
@@ -132,6 +130,7 @@ export default function LoginPage() {
         ...prev,
         submit: "Server error. Please try again later.",
       }));
+      toast.error(err.message || "An error occurred during login.");
     } finally {
       setLoading(false);
     }
@@ -211,12 +210,6 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {errors.submit && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-                  {errors.submit}
-                </div>
-              )}
-
               {successMessage && (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm">
                   {successMessage}

@@ -60,3 +60,91 @@ ORDER BY date ASC;
     res.status(500).json({ error: "Failed to forecast" });
   }
 };
+
+export const getAdminDemandForecast = async (req, res) => {
+  try {
+    const { region, days, history } = req.body;
+
+    if (!region || !days || !history) {
+      return res.status(400).json({
+        message: "Missing required fields: region, days, history",
+      });
+    }
+
+    // 🔥 MAP UI REGION → ACTUAL MODEL FILE
+    const REGION_MODEL_MAP = {
+      NCR: "NCR",
+      "Region 3": "Region_III",
+      "Region III": "Region_III",
+      "REGION III": "Region_III",
+
+      "Region 4-A": "Region_IV-A",
+      "Region IV-A": "Region_IV-A",
+
+      "Region 6": "Region_VI",
+      "Region VI": "Region_VI",
+
+      "Region 7": "Region_VII",
+      "Region VII": "Region_VII",
+    };
+
+    const modelFile = REGION_MODEL_MAP[region];
+
+    if (!modelFile) {
+      return res.status(400).json({
+        message: `No ML model found for region: ${region}`,
+      });
+    }
+
+    // Pass corrected model filename to Python
+    const pyInput = {
+      region: modelFile, // Python script expects the filename now
+      days,
+      history,
+    };
+
+    // Spawn Python process
+    const py = spawn("python", ["./ml_engine/predict.py"]);
+
+    let output = "";
+    let error = "";
+
+    py.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    py.stderr.on("data", (data) => {
+      error += data.toString();
+    });
+
+    py.on("close", (code) => {
+      if (code !== 0) {
+        console.error("Python Error:", error);
+        return res.status(500).json({
+          message: "Prediction script failed",
+          error,
+        });
+      }
+
+      try {
+        const json = JSON.parse(output);
+        return res.json(json);
+      } catch (err) {
+        return res.status(500).json({
+          message: "Invalid JSON returned from Python script",
+          details: err.message,
+        });
+      }
+    });
+
+    // Send input to Python
+    py.stdin.write(JSON.stringify(pyInput));
+    py.stdin.end();
+  } catch (error) {
+    console.error("Forecast controller error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};

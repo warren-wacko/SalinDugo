@@ -11,7 +11,7 @@ import {
   resetPassword,
 } from "../controller/authController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
-
+import { authLimiter, loginLimiter } from "../middleware/rateLimiter.js";
 // Registration validation middleware
 const registerValidation = [
   body("full_name").notEmpty().withMessage("Full name is required"),
@@ -29,11 +29,16 @@ const registerValidation = [
     .withMessage("Password must contain a special character"),
 ];
 
-router.post("/register", registerValidation, registerUser);
-router.post("/login", loginUser);
-router.post("/logout", logoutUser);
-router.post("/refresh-token", refreshTokenHandler);
-router.patch("/change-password", authenticateToken, changePassword);
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password", resetPassword);
+router.post("/register", authLimiter, registerValidation, registerUser);
+router.post("/login", loginLimiter, loginUser);
+router.post("/logout", authLimiter, logoutUser);
+router.post("/refresh-token", authLimiter, refreshTokenHandler);
+router.patch(
+  "/change-password",
+  authLimiter,
+  authenticateToken,
+  changePassword
+);
+router.post("/forgot-password", authLimiter, forgotPassword);
+router.post("/reset-password", authLimiter, resetPassword);
 export default router;

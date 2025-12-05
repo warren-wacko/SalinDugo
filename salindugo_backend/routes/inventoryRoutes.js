@@ -7,13 +7,14 @@ import {
   createWalkInDonation,
   getStockHistoryByBloodType,
 } from "../controller/inventoryController.js";
+import { readLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
 // 🏥 Hospital endpoints
-router.get("/", authenticateToken, getHospitalStock);
+router.get("/", authenticateToken, readLimiter, getHospitalStock);
 router.patch("/", authenticateToken, updateStock);
-router.get("/history", authenticateToken, getInventoryHistory);
+router.get("/history", authenticateToken, readLimiter, getInventoryHistory);
 router.post("/walkin", authenticateToken, createWalkInDonation);
 router.get(
   "/history/:bloodType",

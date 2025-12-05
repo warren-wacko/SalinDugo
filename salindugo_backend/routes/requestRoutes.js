@@ -8,6 +8,7 @@ import {
   getPendingRequest,
   cancelRequest,
   getAllRequests,
+  getAvailableBags,
 } from "../controller/requestController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 
@@ -36,5 +37,7 @@ router.patch("/:id", authenticateToken, updateRequest);
 
 // 🩸 Fulfill a request
 router.patch("/:id/fulfill", authenticateToken, fulfillRequest);
+
+router.get("/bloodbags/:blood_type", authenticateToken, getAvailableBags);
 
 export default router;

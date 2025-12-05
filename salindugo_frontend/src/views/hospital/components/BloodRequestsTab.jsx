@@ -14,8 +14,12 @@ import {
   Package,
   Loader2,
   Filter,
-  HeartPlus,
-  Calendar as CalendarIcon,
+  HeartPulse as HeartPlus,
+  CalendarIcon,
+  AlertCircle,
+  Check,
+  Droplet,
+  Clock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -81,40 +85,64 @@ export default function BloodRequestsTab() {
     request: null,
     stock: null,
     units: 1,
+    bags: [],
+    selectedBags: [],
   });
 
   const itemsPerPage = 5;
 
   const openFulfillDialog = async (req) => {
     try {
-      const res = await api.get("/api/stocks"); // fetch current hospital stock
-      const stock = res.data.find((s) => s.blood_type === req.blood_type);
+      const stockResponse = await api.get("/api/stocks");
+      const stock = stockResponse.data.find(
+        (s) => s.blood_type === req.blood_type
+      );
+      const bagsResponse = await api.get(
+        `/api/requests/bloodbags/${req.blood_type}`
+      );
+      console.log("BAGS RESPONSE:", bagsResponse.data);
 
       setFulfillDialog({
         open: true,
         request: req,
         stock: stock || { units_available: 0 },
         units: req.units_needed,
+        bags: bagsResponse.data,
+        selectedBags: [],
       });
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load stock info");
+      toast.error("Failed to load stock or bags");
     }
+  };
+
+  const toggleBagSelection = (bagId) => {
+    setFulfillDialog((prev) => {
+      const selected = prev.selectedBags.includes(bagId)
+        ? prev.selectedBags.filter((id) => id !== bagId)
+        : [...prev.selectedBags, bagId];
+      return { ...prev, selectedBags: selected, units: selected.length };
+    });
   };
 
   const fulfillRequest = async () => {
     const { request, units } = fulfillDialog;
     try {
       setUpdatingId(request.request_id);
-
       await api.patch(`/api/requests/${request.request_id}/fulfill`, {
-        units: Number(units),
+        bag_ids: fulfillDialog.selectedBags,
+      });
+      toast.success("Request fulfilled successfully! ✅");
+      setFulfillDialog({
+        open: false,
+        request: null,
+        stock: null,
+        units: 1,
+        bags: [],
+        selectedBags: [],
       });
 
-      toast.success("Request fulfilled successfully! ✅");
-
-      setFulfillDialog({ open: false, request: null, stock: null, units: 1 });
-      await fetchRequests(); // refresh table
+      await fetchRequests();
     } catch (err) {
       console.error(err);
       toast.error(err.response?.data?.message || "Failed to fulfill request");
@@ -123,7 +151,6 @@ export default function BloodRequestsTab() {
     }
   };
 
-  // ✅ Fetch requests
   const fetchRequests = async () => {
     try {
       const res = await api.get("/api/requests");
@@ -140,12 +167,10 @@ export default function BloodRequestsTab() {
     if (accessToken) fetchRequests();
   }, [accessToken]);
 
-  // ✅ Update status
   const handleStatusUpdate = async (requestId, newStatus) => {
     try {
       setUpdatingId(requestId);
       await api.patch(`/api/requests/${requestId}`, { status: newStatus });
-
       if (newStatus === "open") {
         toast.success("Request Reopened", {
           description:
@@ -170,9 +195,7 @@ export default function BloodRequestsTab() {
           description: `Status changed to ${newStatus}.`,
         });
       }
-
       await fetchRequests();
-
       if (typeof window.refreshNotifications === "function") {
         window.refreshNotifications();
       }
@@ -190,22 +213,18 @@ export default function BloodRequestsTab() {
     setCancelDialog({ open: true, id });
   };
 
-  // ✅ Filtering
   const filteredRequests = searchRequests(requests, searchTerm).filter(
     (req) => {
       const matchesStatus =
         statusFilter === "all" || req.status === statusFilter;
-
       const matchesDate = dateFilter
         ? format(new Date(req.request_date), "yyyy-MM-dd") ===
           format(dateFilter, "yyyy-MM-dd")
         : true;
-
       return matchesStatus && matchesDate;
     }
   );
 
-  // ✅ Pagination
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
   const paginatedRequests = filteredRequests.slice(
     (currentPage - 1) * itemsPerPage,
@@ -214,6 +233,45 @@ export default function BloodRequestsTab() {
 
   const getStatusCapitalized = (status) =>
     status.charAt(0).toUpperCase() + status.slice(1);
+
+  const getDaysUntilExpiry = (expirationDate) => {
+    return Math.ceil(
+      (new Date(expirationDate) - new Date()) / (1000 * 60 * 60 * 24)
+    );
+  };
+
+  const getBagStatusColor = (daysLeft) => {
+    if (daysLeft <= 2) return "bg-red-50 border-red-200";
+    if (daysLeft <= 5) return "bg-amber-50 border-amber-200";
+    if (daysLeft <= 10) return "bg-yellow-50 border-yellow-200";
+    return "bg-green-50 border-green-200";
+  };
+
+  const getBagStatusBadge = (daysLeft) => {
+    if (daysLeft <= 2)
+      return {
+        bg: "bg-red-100",
+        text: "text-red-700",
+        label: `${daysLeft} days left`,
+      };
+    if (daysLeft <= 5)
+      return {
+        bg: "bg-amber-100",
+        text: "text-amber-700",
+        label: `${daysLeft} days left`,
+      };
+    if (daysLeft <= 10)
+      return {
+        bg: "bg-yellow-100",
+        text: "text-yellow-700",
+        label: `${daysLeft} days left`,
+      };
+    return {
+      bg: "bg-green-100",
+      text: "text-green-700",
+      label: `${daysLeft} days left`,
+    };
+  };
 
   return (
     <>
@@ -230,7 +288,6 @@ export default function BloodRequestsTab() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-border rounded-lg p-3 bg-card/50">
           <div className="flex items-center gap-3">
             <Filter className="h-4 w-4 text-muted-foreground" />
-
             {/* SEARCH BAR */}
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -242,7 +299,6 @@ export default function BloodRequestsTab() {
                 className="pl-8 w-[200px]"
               />
             </div>
-
             {/* STATUS FILTER */}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[160px]">
@@ -256,7 +312,6 @@ export default function BloodRequestsTab() {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-
             {/* DATE FILTER */}
             <Popover>
               <PopoverTrigger asChild>
@@ -280,7 +335,6 @@ export default function BloodRequestsTab() {
                 />
               </PopoverContent>
             </Popover>
-
             {(statusFilter !== "all" || dateFilter || searchTerm) && (
               <Button
                 variant="ghost"
@@ -332,7 +386,6 @@ export default function BloodRequestsTab() {
                     </th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {paginatedRequests.map((req) => (
                     <tr
@@ -352,7 +405,6 @@ export default function BloodRequestsTab() {
                         {req.units_needed}
                       </td>
                       <td className="px-6 py-4">
-                        {/* ✅ Urgency Badge — Option 1 */}
                         <div
                           className={`inline-flex items-center px-2.5 py-1.5 rounded-full text-xs font-semibold ${
                             req.urgency_level === "emergency"
@@ -373,9 +425,7 @@ export default function BloodRequestsTab() {
                           )}
                         </div>
                       </td>
-
                       <td className="px-6 py-4">
-                        {/* ✅ Status Chip — Option 2 */}
                         <div
                           className={`inline-flex items-center px-2.5 py-1.5 rounded-full text-xs font-medium capitalize border ${
                             req.status === "open"
@@ -404,7 +454,6 @@ export default function BloodRequestsTab() {
                           {getStatusCapitalized(req.status)}
                         </div>
                       </td>
-
                       <td className="px-6 py-4 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -443,7 +492,6 @@ export default function BloodRequestsTab() {
                               <Package className="mr-2 h-4 w-4 text-sky-600" />
                               Fulfill Request
                             </DropdownMenuItem>
-
                             {req.status === "open" && (
                               <DropdownMenuItem
                                 onClick={() => handleCancel(req.request_id)}
@@ -480,7 +528,6 @@ export default function BloodRequestsTab() {
                         }
                       />
                     </PaginationItem>
-
                     {Array.from({ length: totalPages }, (_, i) => (
                       <PaginationItem key={i}>
                         <PaginationLink
@@ -492,7 +539,6 @@ export default function BloodRequestsTab() {
                         </PaginationLink>
                       </PaginationItem>
                     ))}
-
                     <PaginationItem>
                       <PaginationNext
                         href="#"
@@ -527,6 +573,7 @@ export default function BloodRequestsTab() {
             </EmptyHeader>
           </Empty>
         )}
+
         <AlertDialog
           open={cancelDialog.open}
           onOpenChange={(open) => {
@@ -542,7 +589,6 @@ export default function BloodRequestsTab() {
                 <span className="font-semibold text-red-700">cancelled</span>.
               </AlertDialogDescription>
             </AlertDialogHeader>
-
             <AlertDialogFooter>
               <AlertDialogCancel
                 onClick={() => setCancelDialog({ open: false, id: null })}
@@ -571,56 +617,200 @@ export default function BloodRequestsTab() {
               request: null,
               stock: null,
               units: 1,
+              bags: [],
+              selectedBags: [],
             })
           }
         >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Fulfill Blood Request 🏥</AlertDialogTitle>
-              <AlertDialogDescription>
-                Provide <strong>{fulfillDialog.request?.units_needed}</strong>{" "}
-                requested unit(s) of{" "}
-                <strong>{fulfillDialog.request?.blood_type}</strong>.
-              </AlertDialogDescription>
+          <AlertDialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header Section */}
+            <AlertDialogHeader className="border-b pb-4 mb-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <AlertDialogTitle className="text-2xl font-bold flex items-center gap-2">
+                    <Droplet className="h-6 w-6 text-red-600" />
+                    Fulfill Blood Request
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="mt-2 text-base">
+                    Assign blood bags to fulfill this request
+                  </AlertDialogDescription>
+                </div>
+              </div>
             </AlertDialogHeader>
 
-            {fulfillDialog.stock && (
-              <div className="mt-3 space-y-2 text-sm border p-3 rounded-lg">
-                <div className="flex justify-between">
-                  <span>Available Stock:</span>
-                  <span className="font-semibold">
-                    {fulfillDialog.stock.units_available} units
-                  </span>
+            {/* Request Summary Card */}
+            {fulfillDialog.request && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Request Details
+                    </p>
+                    <p className="text-lg font-bold mt-1">
+                      {fulfillDialog.request.blood_type}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Patient: {fulfillDialog.request.requester_name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Units Needed
+                    </p>
+                    <p className="text-lg font-bold mt-1">
+                      {fulfillDialog.request.units_needed}{" "}
+                      <span className="text-sm font-normal">units</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Selected:{" "}
+                      <span className="font-semibold">
+                        {fulfillDialog.selectedBags.length}
+                      </span>
+                    </p>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Units to Fulfill:
-                  </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max={fulfillDialog.stock.units_available}
-                    value={fulfillDialog.units}
-                    onChange={(e) =>
-                      setFulfillDialog({
-                        ...fulfillDialog,
-                        units: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                {fulfillDialog.stock.units_available <
-                  fulfillDialog.request?.units_needed && (
-                  <p className="text-xs text-amber-600 font-medium">
-                    Warning: Not enough stock to fully fulfill this request.
-                  </p>
-                )}
               </div>
             )}
 
-            <AlertDialogFooter>
+            {/* Stock Information */}
+            {fulfillDialog.stock && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Available Stock
+                    </p>
+                    <p className="text-2xl font-bold text-green-700 mt-1">
+                      {fulfillDialog.stock.units_available} units
+                    </p>
+                  </div>
+                  {fulfillDialog.stock.units_available <
+                    fulfillDialog.request?.units_needed && (
+                    <div className="flex items-center gap-2 text-amber-700 bg-amber-100 px-3 py-2 rounded-lg">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-sm font-semibold">
+                        Insufficient Stock
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Blood Bags Selection */}
+            {fulfillDialog.bags && fulfillDialog.bags.length > 0 ? (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-semibold text-foreground">
+                    Available Blood Bags
+                  </p>
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                    {fulfillDialog.bags.length} bags available
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-2">
+                  {fulfillDialog.bags.map((bag) => {
+                    const daysLeft = getDaysUntilExpiry(bag.expiration_date);
+                    const isSelected = fulfillDialog.selectedBags.includes(
+                      bag.bag_id
+                    );
+                    const statusBadge = getBagStatusBadge(daysLeft);
+
+                    return (
+                      <div
+                        key={bag.bag_id}
+                        onClick={() => toggleBagSelection(bag.bag_id)}
+                        className={`
+                          relative p-4 border-2 rounded-lg cursor-pointer transition-all duration-200
+                          ${
+                            isSelected
+                              ? "border-primary bg-primary/5 shadow-md"
+                              : `border-border hover:border-primary/50 ${getBagStatusColor(
+                                  daysLeft
+                                )}`
+                          }
+                        `}
+                      >
+                        {/* Selection Checkbox */}
+                        <div
+                          className={`
+                            absolute top-3 right-3 w-5 h-5 border-2 rounded flex items-center justify-center
+                            transition-all duration-200
+                            ${
+                              isSelected
+                                ? "bg-primary border-primary"
+                                : "border-border group-hover:border-primary"
+                            }
+                          `}
+                        >
+                          {isSelected && (
+                            <Check className="h-3 w-3 text-white" />
+                          )}
+                        </div>
+
+                        {/* Bag Content */}
+                        <div className="pr-8">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Droplet className="h-4 w-4 text-red-600" />
+                            <span className="font-bold text-foreground">
+                              Bag #{bag.bag_id}
+                            </span>
+                            <span
+                              className={`text-xs font-semibold px-2 py-1 rounded-full ${statusBadge.bg} ${statusBadge.text}`}
+                            >
+                              {statusBadge.label}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>
+                                Expires:{" "}
+                                {
+                                  new Date(bag.expiration_date)
+                                    .toISOString()
+                                    .split("T")[0]
+                                }
+                              </span>
+                            </div>
+                            {bag.donation_date && (
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <Calendar className="h-3.5 w-3.5" />
+                                <span>
+                                  Donated:{" "}
+                                  {
+                                    new Date(bag.donation_date)
+                                      .toISOString()
+                                      .split("T")[0]
+                                  }
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {daysLeft <= 5 && (
+                            <div className="mt-2 flex items-center gap-2 text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded w-fit">
+                              <AlertCircle className="h-3 w-3" />
+                              Expiring soon - use first
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No blood bags available for this blood type</p>
+              </div>
+            )}
+
+            {/* Footer Actions */}
+            <AlertDialogFooter className="border-t pt-4 mt-4">
               <AlertDialogCancel
                 onClick={() =>
                   setFulfillDialog({
@@ -628,21 +818,38 @@ export default function BloodRequestsTab() {
                     request: null,
                     stock: null,
                     units: 1,
+                    bags: [],
+                    selectedBags: [],
                   })
                 }
               >
                 Cancel
               </AlertDialogCancel>
-
               <AlertDialogAction
-                className="bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
-                disabled={updatingId === fulfillDialog.request?.request_id}
+                className={`
+                  flex items-center gap-2 px-6 py-2 rounded-lg font-semibold
+                  ${
+                    fulfillDialog.selectedBags.length > 0
+                      ? "bg-green-600 hover:bg-green-700 text-white"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }
+                `}
+                disabled={
+                  fulfillDialog.selectedBags.length === 0 ||
+                  updatingId === fulfillDialog.request?.request_id
+                }
                 onClick={fulfillRequest}
               >
                 {updatingId === fulfillDialog.request?.request_id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
                 ) : (
-                  "Fulfill Request"
+                  <>
+                    <Check className="h-4 w-4" />
+                    Fulfill Request ({fulfillDialog.selectedBags.length})
+                  </>
                 )}
               </AlertDialogAction>
             </AlertDialogFooter>

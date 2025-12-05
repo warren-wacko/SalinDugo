@@ -34,6 +34,7 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
 
 const getInitials = (fullName = "") => {
   const parts = fullName.trim().split(" ");
@@ -137,6 +138,7 @@ export default function AdminHospitalTab() {
   async function createHospital() {
     try {
       await api.post("/api/admin/", newHospital);
+      toast.success("Hospital created successfully");
       setCreateOpen(false);
       setNewHospital({ full_name: "", email: "", password: "", region: "" });
       fetchHospitals();
@@ -573,10 +575,10 @@ export default function AdminHospitalTab() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="NCR">NCR</SelectItem>
-                  <SelectItem value="REGION 3">REGION 3</SelectItem>
-                  <SelectItem value="REGION 4-A">REGION 4-A</SelectItem>
-                  <SelectItem value="REGION 6">REGION 6</SelectItem>
-                  <SelectItem value="REGION 7">REGION 7</SelectItem>
+                  <SelectItem value="REGION III">REGION III</SelectItem>
+                  <SelectItem value="REGION IV-A">REGION IV-A</SelectItem>
+                  <SelectItem value="REGION VI">REGION VI</SelectItem>
+                  <SelectItem value="REGION VII">REGION VII</SelectItem>
                 </SelectContent>
               </Select>
             </div>

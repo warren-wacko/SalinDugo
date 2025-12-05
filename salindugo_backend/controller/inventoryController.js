@@ -270,8 +270,17 @@ export const createWalkInDonation = async (req, res) => {
     const bagIds = [];
     for (let i = 0; i < units; i++) {
       const bagRes = await client.query(
-        `INSERT INTO blood_bags (donation_id, hospital_id, blood_type) 
-         VALUES ($1, $2, $3) RETURNING bag_id`,
+        `INSERT INTO blood_bags (
+        donation_id,
+        hospital_id,
+        blood_type,
+        status,
+        created_at,
+        expiration_date
+     ) VALUES (
+        $1, $2, $3, 'available', NOW(), NOW() + INTERVAL '35 days'
+     )
+     RETURNING bag_id`,
         [donation_id, hospital_id, blood_type]
       );
       bagIds.push(bagRes.rows[0].bag_id);

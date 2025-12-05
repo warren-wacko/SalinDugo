@@ -14,6 +14,7 @@ import {
   adminDonationsPerHospital,
   adminRequestsPerHospital,
   adminLowStockHospitals,
+  adminStockByRegion,
 } from "../controller/adminController.js";
 
 import { authenticateToken } from "../middleware/authMiddleware.js";
@@ -52,5 +53,7 @@ router.get(
   adminRequestsPerHospital
 );
 router.get("/performance/low-stock", authenticateToken, adminLowStockHospitals);
+
+router.get("/stocks/regions", authenticateToken, adminStockByRegion);
 
 export default router;

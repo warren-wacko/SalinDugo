@@ -387,6 +387,10 @@ export const fulfillRequest = async (req, res) => {
   try {
     const { id } = req.params;
     const hospital_id = req.user.id;
+    const { bag_ids } = req.body;
+
+    if (!bag_ids || bag_ids.length === 0)
+      return res.status(400).json({ message: "No blood bags selected" });
 
     await client.query("BEGIN");
 
@@ -466,22 +470,27 @@ export const fulfillRequest = async (req, res) => {
 
     const updatedStock = Math.max(0, currentStock - request.units_needed);
 
-    const bagRes = await client.query(
-      `SELECT bag_id FROM blood_bags
-       WHERE hospital_id = $1 AND blood_type = $2 AND status = 'available'
-       ORDER BY created_at ASC
-       LIMIT $3`,
-      [hospital_id, request.blood_type, request.units_needed]
+    // Ensure all bags belong to hospital and are available
+    const checkBags = await client.query(
+      `
+  SELECT bag_id FROM blood_bags
+  WHERE hospital_id = $1 
+  AND blood_type = $2
+  AND bag_id = ANY($3)
+  AND status = 'available'
+  AND expiration_date > NOW()
+  `,
+      [hospital_id, request.blood_type, bag_ids]
     );
 
-    if (bagRes.rows.length < request.units_needed) {
+    if (checkBags.rows.length !== bag_ids.length) {
       await client.query("ROLLBACK");
-      return res.status(400).json({
-        message: `Not enough available blood bags to fulfill request`,
-      });
+      return res
+        .status(400)
+        .json({ message: "Invalid or unavailable bags selected" });
     }
 
-    const bagIds = bagRes.rows.map((b) => b.bag_id);
+    const bagIds = checkBags.rows.map((b) => b.bag_id);
 
     // 4️⃣ Mark bags as used
     await client.query(
@@ -592,5 +601,30 @@ export const getAllRequests = async (req, res) => {
   } catch (err) {
     console.error("Error fetching requests:", err);
     res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+export const getAvailableBags = async (req, res) => {
+  try {
+    const hospital_id = req.user.id;
+    const { blood_type } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT bag_id, blood_type, created_at, expiration_date, status
+      FROM blood_bags
+      WHERE hospital_id = $1 
+      AND blood_type = $2
+      AND status = 'available'
+      AND expiration_date > NOW()
+      ORDER BY expiration_date ASC
+      `,
+      [hospital_id, blood_type]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error loading bags:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

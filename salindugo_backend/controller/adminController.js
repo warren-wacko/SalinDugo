@@ -414,3 +414,30 @@ export const adminLowStockHospitals = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
+// ======================================================
+// GET /api/admin/stocks/regions → Total stock per region
+// ======================================================
+export const adminStockByRegion = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        u.region,
+        bs.blood_type,
+        SUM(bs.units_available) AS total_units
+      FROM blood_stocks bs
+      JOIN users u ON u.user_id = bs.hospital_id
+      WHERE u.role = 'hospital'
+      GROUP BY u.region, bs.blood_type
+      ORDER BY u.region ASC, bs.blood_type ASC
+    `);
+
+    res.json({ region_stock: result.rows });
+  } catch (err) {
+    console.error("Stock by Region Error:", err);
+    res.status(500).json({
+      message: "Server error retrieving stock by region",
+      error: err.message,
+    });
+  }
+};

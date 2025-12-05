@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect, useMemo } from "react";
 import api from "../../../api/axios";
 import {
@@ -35,6 +33,10 @@ import {
   Droplets,
   Activity,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 const CHART_COLORS = {
   primary: "#4ade80",
@@ -49,6 +51,14 @@ const STATUS_COLORS = {
   open: "#60a5fa", // blue
   matched: "#fbbf24", // yellow
   cancelled: "#f87171", // red
+};
+
+const REGION_COLORS = {
+  NCR: "#60a5fa",
+  "Region III": "#facc15",
+  "Region IV-A": "#fb7185",
+  "Region VI": "#f97316",
+  "Region VII": "#2dd4bf",
 };
 
 function SummaryCard({ title, value, icon: Icon, trend, trendValue, color }) {
@@ -243,10 +253,161 @@ export default function AdminOverviewTab() {
   const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [regionStock, setRegionStock] = useState([]);
 
   useEffect(() => {
     fetchAll();
   }, []);
+
+  // 🔹 MOVE PRINT HERE so it can see summary, regionStock, lowStock
+  const handlePrintReport = () => {
+    if (!summary) return; // safety
+
+    const win = window.open("", "_blank", "width=1024,height=900");
+    if (!win) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    const lowStockGrouped = {};
+    lowStock.forEach((item) => {
+      if (!lowStockGrouped[item.hospital_name]) {
+        lowStockGrouped[item.hospital_name] = [];
+      }
+      lowStockGrouped[item.hospital_name].push(item);
+    });
+
+    const lowColor = (u) =>
+      u < 5 ? `style="color:red;font-weight:bold;"` : "";
+
+    // Pivot + initialize
+    const bloodTypes = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+
+    const pivot = {};
+    regionStock.forEach((r) => {
+      if (!pivot[r.region]) {
+        pivot[r.region] = { region: r.region };
+        bloodTypes.forEach((bt) => (pivot[r.region][bt] = 0));
+      }
+      pivot[r.region][r.blood_type] = r.units;
+    });
+
+    // Row totals
+    Object.values(pivot).forEach((row) => {
+      row.total = bloodTypes.reduce((sum, bt) => sum + row[bt], 0);
+    });
+
+    // Column totals
+    const columnTotals = {};
+    bloodTypes.forEach((bt) => {
+      columnTotals[bt] = Object.values(pivot).reduce(
+        (sum, row) => sum + row[bt],
+        0
+      );
+    });
+    columnTotals.total = Object.values(columnTotals).reduce((a, b) => a + b, 0);
+
+    // Conditional color helper
+    const colorCell = (value) =>
+      value < 10 ? `style="color:red;font-weight:bold;"` : "";
+
+    win.document.write(`
+      <html>
+        <head>
+          <title>Admin Summary Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { font-size: 22px; margin-bottom: 10px; }
+            h2 { margin-top: 30px; font-size: 18px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            th { background: #f2f2f2; }
+          </style>
+        </head>
+        <body>
+
+          <h1>Admin Summary Report</h1>
+
+          <h2>General Statistics</h2>
+          <table>
+            <tr><th>Metric</th><th>Value</th></tr>
+            <tr><td>Total Users</td><td>${summary.total_users}</td></tr>
+            <tr><td>Total Donations</td><td>${summary.total_donations}</td></tr>
+            <tr><td>Unfulfilled Requests</td><td>${
+              summary.unfulfilled_requests
+            }</td></tr>
+            <tr><td>Total Hospitals</td><td>${summary.total_hospitals}</td></tr>
+          </table>
+
+          <h2>Blood Stock by Region</h2>
+<table>
+  <tr>
+    <th>Region</th>
+    ${bloodTypes.map((bt) => `<th>${bt}</th>`).join("")}
+    <th>Total</th>
+  </tr>
+
+  ${Object.values(pivot)
+    .map(
+      (row) => `
+      <tr>
+        <td>${row.region}</td>
+        ${bloodTypes
+          .map((bt) => `<td ${colorCell(row[bt])}>${row[bt]}</td>`)
+          .join("")}
+        <td style="font-weight:bold;">${row.total}</td>
+      </tr>`
+    )
+    .join("")}
+
+  <tr style="background:#f2f2f2;font-weight:bold;">
+    <td>Total</td>
+    ${bloodTypes.map((bt) => `<td>${columnTotals[bt]}</td>`).join("")}
+    <td>${columnTotals.total}</td>
+  </tr>
+</table>
+
+
+
+        <h2>Low Stock Alerts</h2>
+
+<table>
+  <tr>
+    <th>Hospital</th>
+    <th>Blood Type</th>
+    <th>Units</th>
+  </tr>
+
+  ${Object.entries(lowStockGrouped)
+    .map(([hospital, stocks]) =>
+      stocks
+        .map(
+          (s, idx) => `
+          <tr>
+            ${
+              idx === 0
+                ? `<td rowspan="${stocks.length}" style="font-weight:bold;">${hospital}</td>`
+                : ""
+            }
+            <td>${s.blood_type}</td>
+            <td ${lowColor(s.units_available)}>${s.units_available}</td>
+          </tr>`
+        )
+        .join("")
+    )
+    .join("")}
+</table>
+
+
+        </body>
+      </html>
+    `);
+
+    win.document.close();
+    win.focus();
+    win.print();
+    // win.close(); // optional
+  };
 
   async function fetchAll() {
     setLoading(true);
@@ -260,6 +421,7 @@ export default function AdminOverviewTab() {
         donHospRes,
         reqHospRes,
         lowStockRes,
+        regionStockRes,
       ] = await Promise.all([
         api.get("/api/admin/dashboard"),
         api.get("/api/admin/donations/monthly"),
@@ -268,6 +430,7 @@ export default function AdminOverviewTab() {
         api.get("/api/admin/performance/donations"),
         api.get("/api/admin/performance/requests"),
         api.get("/api/admin/performance/low-stock"),
+        api.get("/api/admin/stocks/regions"),
       ]);
 
       const dashboard = dashboardRes.data || {};
@@ -336,6 +499,14 @@ export default function AdminOverviewTab() {
 
       // Low stock alerts
       setLowStock(lowStockData);
+
+      setRegionStock(
+        regionStockRes.data.region_stock.map((r) => ({
+          region: r.region,
+          blood_type: r.blood_type,
+          units: Number(r.total_units),
+        }))
+      );
     } catch (err) {
       console.error("[Admin Dashboard Error]", err);
       setError(
@@ -408,285 +579,333 @@ export default function AdminOverviewTab() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Admin Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Blood donation management overview
-          </p>
+    <div id="report-content">
+      <div className="p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Admin Dashboard
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Blood donation management overview
+            </p>
+          </div>
+          <Button
+            onClick={handlePrintReport}
+            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
+          >
+            Print Report
+          </Button>
         </div>
-        <Badge
-          variant="outline"
-          className="bg-primary/10 text-primary border-primary/30"
-        >
-          Live Data
-        </Badge>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <SummaryCard
-          title="Total Users"
-          value={summary.total_users}
-          icon={Users}
-          color={CHART_COLORS.secondary}
-        />
-        <SummaryCard
-          title="Total Donations"
-          value={summary.total_donations}
-          icon={Gift}
-          color={CHART_COLORS.primary}
-        />
-        <SummaryCard
-          title="Unfulfilled Requests"
-          value={summary.unfulfilled_requests}
-          icon={AlertTriangle}
-          color={CHART_COLORS.danger}
-        />
-        <SummaryCard
-          title="Partner Hospitals"
-          value={summary.total_hospitals}
-          icon={Building2}
-          color={CHART_COLORS.yellow}
-        />
-      </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <SummaryCard
+            title="Total Users"
+            value={summary.total_users}
+            icon={Users}
+            color={CHART_COLORS.secondary}
+          />
+          <SummaryCard
+            title="Total Donations"
+            value={summary.total_donations}
+            icon={Gift}
+            color={CHART_COLORS.primary}
+          />
+          <SummaryCard
+            title="Unfulfilled Requests"
+            value={summary.unfulfilled_requests}
+            icon={AlertTriangle}
+            color={CHART_COLORS.danger}
+          />
+          <SummaryCard
+            title="Partner Hospitals"
+            value={summary.total_hospitals}
+            icon={Building2}
+            color={CHART_COLORS.yellow}
+          />
+        </div>
 
-      {/* Main Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Donation Trend - Takes 2 columns */}
-        <ChartCard
-          title="Monthly Donation Trend"
-          subtitle="Last months performance"
-          className="lg:col-span-2"
-        >
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={donationTrend}>
-                <defs>
-                  <linearGradient
-                    id="donationGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
+        {/* Main Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Donation Trend - Takes 2 columns */}
+          <ChartCard
+            title="Monthly Donation Trend"
+            subtitle="Last months performance"
+            className="lg:col-span-2"
+          >
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={donationTrend}>
+                  <defs>
+                    <linearGradient
+                      id="donationGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor={CHART_COLORS.primary}
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor={CHART_COLORS.primary}
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#374151"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="month"
+                    stroke="#6b7280"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#6b7280"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    stroke={CHART_COLORS.primary}
+                    strokeWidth={2}
+                    fill="url(#donationGradient)"
+                    name="Donations"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+
+          {/* Request Breakdown Pie */}
+          <ChartCard title="Request Status" subtitle="Distribution by status">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={requestBreakdown}
+                    dataKey="value"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={4}
                   >
-                    <stop
-                      offset="5%"
-                      stopColor={CHART_COLORS.primary}
-                      stopOpacity={0.3}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={CHART_COLORS.primary}
-                      stopOpacity={0}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#374151"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="month"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  stroke={CHART_COLORS.primary}
-                  strokeWidth={2}
-                  fill="url(#donationGradient)"
-                  name="Donations"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
+                    {requestBreakdown.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={
+                          STATUS_COLORS[(entry.name || "").toLowerCase()] ||
+                          "#94a3b8"
+                        }
+                        stroke="transparent"
+                      />
+                    ))}
+                  </Pie>
 
-        {/* Request Breakdown Pie */}
-        <ChartCard title="Request Status" subtitle="Distribution by status">
-          <div className="h-72">
+                  <Tooltip content={<CustomTooltip />} />
+
+                  <Legend
+                    formatter={(value) => (
+                      <span className="text-muted-foreground text-xs">
+                        {value.toLowerCase()}
+                      </span>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+        </div>
+
+        {/* Secondary Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Blood Requests Trend */}
+          <ChartCard
+            title="Monthly Blood Requests"
+            subtitle="Request volume trend"
+          >
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={requestTrend}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#374151"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="month"
+                    stroke="#6b7280"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    angle={-20}
+                    textAnchor="end"
+                    height={50}
+                  />
+                  <YAxis
+                    stroke="#6b7280"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar
+                    dataKey="count"
+                    fill={CHART_COLORS.secondary}
+                    radius={[4, 4, 0, 0]}
+                    name="Requests"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+
+          {/* Donations Per Hospital */}
+          <ChartCard
+            title="Donations per Blood Center"
+            subtitle="Top performing Blood Centers"
+          >
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={donPerHospital} layout="vertical">
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#374151"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke="#6b7280"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke="#6b7280"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    width={100}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar
+                    dataKey="count"
+                    fill={CHART_COLORS.primary}
+                    radius={[0, 4, 4, 0]}
+                    name="Donations"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+
+          {/* Requests Per Hospital */}
+          <ChartCard
+            title="Requests per Blood Center"
+            subtitle="Demand distribution"
+          >
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={reqPerHospital} layout="vertical">
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#374151"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke="#6b7280"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke="#6b7280"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    width={100}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar
+                    dataKey="count"
+                    fill={CHART_COLORS.warning}
+                    radius={[0, 4, 4, 0]}
+                    name="Requests"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+        </div>
+
+        {/* Region Stock Chart */}
+        <ChartCard
+          title="Blood Stock by Region"
+          subtitle="Total units available per region"
+        >
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={requestBreakdown}
-                  dataKey="value"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={4}
-                >
-                  {requestBreakdown.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={
-                        STATUS_COLORS[(entry.name || "").toLowerCase()] ||
-                        "#94a3b8"
-                      }
-                      stroke="transparent"
-                    />
-                  ))}
-                </Pie>
-
+              <BarChart
+                data={Object.values(
+                  regionStock.reduce((acc, cur) => {
+                    if (!acc[cur.region])
+                      acc[cur.region] = { region: cur.region };
+                    acc[cur.region][cur.blood_type] = cur.units;
+                    return acc;
+                  }, {})
+                )}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="region" stroke="#6b7280" />
+                <YAxis stroke="#6b7280" />
                 <Tooltip content={<CustomTooltip />} />
 
-                <Legend
-                  formatter={(value) => (
-                    <span className="text-muted-foreground text-xs">
-                      {value.toLowerCase()}
-                    </span>
-                  )}
-                />
-              </PieChart>
+                {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map(
+                  (type) => (
+                    <Bar key={type} dataKey={type} stackId="stock">
+                      {Object.values(
+                        regionStock.reduce((acc, cur) => {
+                          if (!acc[cur.region])
+                            acc[cur.region] = { region: cur.region };
+                          acc[cur.region][cur.blood_type] = cur.units;
+                          return acc;
+                        }, {})
+                      ).map((row, idx) => (
+                        <Cell
+                          key={idx}
+                          fill={REGION_COLORS[row.region] || "#94a3b8"} // fallback color
+                        />
+                      ))}
+                    </Bar>
+                  )
+                )}
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </ChartCard>
+
+        {/* Low Stock Section with Hospital Dropdown */}
+        <LowStockSection lowStock={lowStock} />
       </div>
-
-      {/* Secondary Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Blood Requests Trend */}
-        <ChartCard
-          title="Monthly Blood Requests"
-          subtitle="Request volume trend"
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={requestTrend}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#374151"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="month"
-                  stroke="#6b7280"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  angle={-20}
-                  textAnchor="end"
-                  height={50}
-                />
-                <YAxis
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar
-                  dataKey="count"
-                  fill={CHART_COLORS.secondary}
-                  radius={[4, 4, 0, 0]}
-                  name="Requests"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-
-        {/* Donations Per Hospital */}
-        <ChartCard
-          title="Donations per Blood Center"
-          subtitle="Top performing Blood Centers"
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={donPerHospital} layout="vertical">
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#374151"
-                  horizontal={false}
-                />
-                <XAxis
-                  type="number"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  stroke="#6b7280"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  width={100}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar
-                  dataKey="count"
-                  fill={CHART_COLORS.primary}
-                  radius={[0, 4, 4, 0]}
-                  name="Donations"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-
-        {/* Requests Per Hospital */}
-        <ChartCard
-          title="Requests per Blood Center"
-          subtitle="Demand distribution"
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={reqPerHospital} layout="vertical">
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#374151"
-                  horizontal={false}
-                />
-                <XAxis
-                  type="number"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  stroke="#6b7280"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  width={100}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar
-                  dataKey="count"
-                  fill={CHART_COLORS.warning}
-                  radius={[0, 4, 4, 0]}
-                  name="Requests"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-      </div>
-
-      {/* Low Stock Section with Hospital Dropdown */}
-      <LowStockSection lowStock={lowStock} />
     </div>
   );
 }

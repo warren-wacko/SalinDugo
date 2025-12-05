@@ -1,5 +1,4 @@
 import { useState, Suspense, lazy, useContext } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -10,7 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BloodDropLoader from "../../../utils/bloodDropLoader";
-import { Shield, Settings, Clock, User } from "lucide-react";
+import { Shield, User } from "lucide-react";
 import Navbar from "../../../components/ui/navbar";
 
 const AdminOverviewTab = lazy(() => import("../components/AdminOverviewTab"));
