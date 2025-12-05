@@ -20,7 +20,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 
 import pool from "./db.js";
 const app = express();
-
+app.set("trust proxy", 1);
 app.use(helmet());
 dotenv.config();
 
