@@ -1,49 +1,62 @@
 // rateLimiters.js
 import rateLimit from "express-rate-limit";
 
+// --- COMMON FIX FOR RAILWAY / VERCEL ---
+const getRealIp = (req) => {
+  return (
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.ip ||
+    req.connection?.remoteAddress ||
+    "unknown"
+  );
+};
+
 // General auth limiter (register, forgot, etc.)
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // 50 requests per 15 mins per IP
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many requests, please try again later." },
 });
 
-// Stricter limiter for login (anti brute-force)
+// Stricter limiter for login
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // only 5 failed attempts per 15 mins per IP
+  max: 10, // increase for testing
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
+  skipFailedRequests: false,
+  skipSuccessfulRequests: true,
   handler: (req, res) => {
     return res.status(429).json({
       message: "Too many login attempts. Please try again later.",
     });
   },
-  // optional: only count failed logins, not successes
-  skipSuccessfulRequests: true,
 });
 
 export const profileReadLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many requests, please try again later." },
 });
 
 export const profileUpdateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: 10,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too much profile updates, please try again later." },
 });
 
 export const readLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200, // good safe default for GET routes
+  max: 200,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -51,6 +64,7 @@ export const readLimiter = rateLimit({
 export const scheduleDonationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -58,6 +72,7 @@ export const scheduleDonationLimiter = rateLimit({
 export const requestBloodLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -65,6 +80,7 @@ export const requestBloodLimiter = rateLimit({
 export const walkInDonationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 80,
+  keyGenerator: getRealIp,
   standardHeaders: true,
   legacyHeaders: false,
 });
