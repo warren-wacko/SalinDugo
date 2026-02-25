@@ -5,18 +5,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapPin, Building2, Phone } from "lucide-react";
 import Navbar from "../../../components/ui/navbar";
 const BloodRequestsTab = lazy(() => import("../components/BloodRequestsTab"));
-const DonationSchedulesTab = lazy(() =>
-  import("../components/DonationSchedulesTab")
+const DonationSchedulesTab = lazy(
+  () => import("../components/DonationSchedulesTab"),
 );
 const InventoryTab = lazy(() => import("../components/InventoryTab"));
-const InventoryHistoryTab = lazy(() =>
-  import("../components/InventoryHistoryTab")
+const InventoryHistoryTab = lazy(
+  () => import("../components/InventoryHistoryTab"),
 );
-const NotificationTab = lazy(() =>
-  import("../../user/components/NotificationTab")
+const NotificationTab = lazy(
+  () => import("../../user/components/NotificationTab"),
 );
-const DemandForecastingTab = lazy(() =>
-  import("../components/DemandForecastingTab")
+const DemandForecastingTab = lazy(
+  () => import("../components/DemandForecastingTab"),
 );
 import BloodDropLoader from "../../../utils/bloodDropLoader";
 import { AuthContext } from "../../../context/AuthContext";
@@ -107,7 +107,7 @@ export default function HospitalDashboard() {
               {/* Demand Forecasting Tab */}
               <TabsContent value="forecasting" className="space-y-6">
                 <Suspense fallback={<BloodDropLoader />}>
-                  <DemandForecastingTab />
+                  <DemandForecastingTab hospitalId={user.id} />
                 </Suspense>
               </TabsContent>
 

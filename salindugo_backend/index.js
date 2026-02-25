@@ -54,6 +54,16 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
+app.get("/api/forecast/:centerId", async (req, res) => {
+  const response = await fetch(
+    `http://localhost:8000/forecast/${req.params.centerId}`,
+  );
+
+  const data = await response.json();
+
+  res.json(data);
+});
+
 app.listen(process.env.PORT, () => {
   console.log(`Server is running on port ${process.env.PORT || 5000}`);
 });

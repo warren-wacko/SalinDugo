@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pandas
+numpy
+xgboost
+joblib
+psycopg2-binary

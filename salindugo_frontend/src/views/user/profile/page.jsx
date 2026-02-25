@@ -283,7 +283,7 @@ export default function ProfilePage() {
           address.town ||
           address.county ||
           "",
-        province: address.state || addr.region || "",
+        province: address.state || address.region || "",
         region: prev.region, // KEEP THE USER'S SELECTED REGION
         zip_code: address.postcode || "",
         latitude: parseFloat(lat).toFixed(5),

@@ -76,11 +76,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  formatName,
+  generateTimeSlots,
+} from "../../../utils/validationHelpers";
 
 import Navbar from "../../../components/ui/navbar";
 import { AuthContext } from "../../../context/AuthContext";
-const DonationHistoryTab = lazy(() =>
-  import("../components/DonationHistoryTab")
+const DonationHistoryTab = lazy(
+  () => import("../components/DonationHistoryTab"),
 );
 const NotificationTab = lazy(() => import("../components/NotificationTab"));
 const RequestHistoryTab = lazy(() => import("../components/RequestHistoryTab"));
@@ -90,6 +94,11 @@ import api from "../../../api/axios";
 export default function UnifiedDashboard() {
   const [mode, setMode] = useState("donate");
   const { user, accessToken } = useContext(AuthContext);
+  const morningSlots = generateTimeSlots("08:00", "11:30", 30);
+  const afternoonSlots = generateTimeSlots("13:30", "16:30", 30);
+
+  const workingHours = [...morningSlots, ...afternoonSlots];
+
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     id: user?.id || "",
@@ -176,6 +185,36 @@ export default function UnifiedDashboard() {
       toast.error(err.response?.data?.message || "Failed to cancel request");
     }
   };
+
+  useEffect(() => {
+    if (!accessToken || !user) return;
+
+    const fetchMatches = async () => {
+      setLoadingMatches(true);
+      try {
+        if (mode === "donate") {
+          // Donor looking for hospitals needing blood
+          const res = await api.get("/api/matching/donor", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          setHospitalsNeedingBlood(res.data.matches || []);
+        } else {
+          // Hospital looking for donors or available stock (if you implement later)
+          const res = await api.get("/api/matching/hospital/1", {
+            // You can dynamically pass request_id once you hook requests
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          setHospitalsWithBloodStock(res.data.matches || []);
+        }
+      } catch (err) {
+        console.error("Error fetching matches:", err);
+      } finally {
+        setLoadingMatches(false);
+      }
+    };
+
+    fetchMatches();
+  }, [mode, accessToken, user]);
 
   useEffect(() => {
     if (!accessToken || !user || mode !== "request") return;
@@ -283,6 +322,20 @@ export default function UnifiedDashboard() {
       if (typeof window.refreshNotifications === "function") {
         window.refreshNotifications();
       }
+
+      const checkPendingRequest = async () => {
+        setLoadingRequest(true);
+        try {
+          const res = await api.get(`/api/requests/pending/${user.id}`);
+          console.log("Pending request check:", res.data);
+          setPendingRequest(res.data.request || null);
+        } catch (err) {
+          console.error("Error checking pending request:", err);
+        } finally {
+          setLoadingRequest(false);
+        }
+      };
+      await checkPendingRequest();
     } catch (err) {
       console.error("Error submitting request:", err);
 
@@ -336,7 +389,7 @@ export default function UnifiedDashboard() {
       console.log("Server response:", res.data);
       if (user.age < 18) {
         toast.warning(
-          "Schedule approved. Don't forget your parental consent—without it, the appointment may be invalid."
+          "Schedule approved. Don't forget your parental consent—without it, the appointment may be invalid.",
         );
       } else {
         toast.success("Donation Schedule Submitted", {
@@ -413,7 +466,7 @@ export default function UnifiedDashboard() {
 
       // ➕ add 90 days
       const nextEligible = new Date(
-        lastDonation.getTime() + 90 * 24 * 60 * 60 * 1000
+        lastDonation.getTime() + 90 * 24 * 60 * 60 * 1000,
       );
       const today = new Date();
 
@@ -494,7 +547,7 @@ export default function UnifiedDashboard() {
                     <AvatarInitials name={userProfile.name} />
                   </AvatarFallback>
                 </Avatar>
-                <CardTitle>{userProfile.name}</CardTitle>
+                <CardTitle>{formatName(userProfile.name)}</CardTitle>
                 <CardDescription>
                   {mode === "donate" ? "Blood Donor" : "Blood Recipient"}
                 </CardDescription>
@@ -668,7 +721,7 @@ export default function UnifiedDashboard() {
 
                           {/* Hospital - 🆕 Auto-selected, read-only */}
                           <div className="space-y-2">
-                            <Label htmlFor="hospital">Hospital</Label>
+                            <Label htmlFor="hospital">Blood Center</Label>
                             <Input
                               id="hospital"
                               value={
@@ -750,8 +803,8 @@ export default function UnifiedDashboard() {
                                   pendingSchedule.status === "approved"
                                     ? "success"
                                     : pendingSchedule.status === "pending"
-                                    ? "secondary"
-                                    : "outline"
+                                      ? "secondary"
+                                      : "outline"
                                 }
                                 className="px-3 py-1 text-xs font-semibold uppercase tracking-wide"
                               >
@@ -789,7 +842,7 @@ export default function UnifiedDashboard() {
                                     </p>
                                     <p className="font-semibold">
                                       {new Date(
-                                        pendingSchedule.scheduled_date
+                                        pendingSchedule.scheduled_date,
                                       ).toLocaleDateString("en-US", {
                                         weekday: "short",
                                         month: "short",
@@ -810,7 +863,7 @@ export default function UnifiedDashboard() {
                                     </p>
                                     <p className="font-semibold">
                                       {new Date(
-                                        `1970-01-01T${pendingSchedule.scheduled_time}`
+                                        `1970-01-01T${pendingSchedule.scheduled_time}`,
                                       ).toLocaleTimeString("en-US", {
                                         hour: "numeric",
                                         minute: "2-digit",
@@ -887,7 +940,7 @@ export default function UnifiedDashboard() {
                                 className="w-full  sm:flex-1 bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
                                 onClick={() =>
                                   handleCancelSchedule(
-                                    pendingSchedule.schedule_id
+                                    pendingSchedule.schedule_id,
                                   )
                                 }
                               >
@@ -953,7 +1006,7 @@ export default function UnifiedDashboard() {
                       hospitalsNeedingBlood
                         .slice(
                           (donatePage - 1) * donatePerPage,
-                          donatePage * donatePerPage
+                          donatePage * donatePerPage,
                         )
                         .map((hospital, index) => (
                           <Card
@@ -987,7 +1040,7 @@ export default function UnifiedDashboard() {
                                             {bt.blood_type} — {bt.units_needed}{" "}
                                             units
                                           </Badge>
-                                        )
+                                        ),
                                       )}
                                     </div>
 
@@ -1053,7 +1106,7 @@ export default function UnifiedDashboard() {
                                           hospital.blood_type_summary
                                             ?.sort(
                                               (a, b) =>
-                                                b.units_needed - a.units_needed
+                                                b.units_needed - a.units_needed,
                                             )
                                             .map((item, idx) => (
                                               <div
@@ -1108,10 +1161,12 @@ export default function UnifiedDashboard() {
                                           pendingSchedule
                                             ? "You already have a pending donation schedule"
                                             : daysUntilEligible > 0
-                                            ? `You can donate again in ${daysUntilEligible} day${
-                                                daysUntilEligible > 1 ? "s" : ""
-                                              }`
-                                            : "You are eligible to donate now!"
+                                              ? `You can donate again in ${daysUntilEligible} day${
+                                                  daysUntilEligible > 1
+                                                    ? "s"
+                                                    : ""
+                                                }`
+                                              : "You are eligible to donate now!"
                                         }
                                         onClick={() => {
                                           setSelectedHospital(hospital);
@@ -1122,8 +1177,8 @@ export default function UnifiedDashboard() {
                                         {pendingSchedule
                                           ? "Schedule Pending"
                                           : daysUntilEligible > 0
-                                          ? "Not Eligible Yet"
-                                          : "Schedule Donation"}
+                                            ? "Not Eligible Yet"
+                                            : "Schedule Donation"}
                                       </Button>
                                     </DialogTrigger>
 
@@ -1281,9 +1336,9 @@ export default function UnifiedDashboard() {
                                                 {donationFormData.date ? (
                                                   format(
                                                     new Date(
-                                                      donationFormData.date
+                                                      donationFormData.date,
                                                     ),
-                                                    "PPP"
+                                                    "PPP",
                                                   )
                                                 ) : (
                                                   <span>Pick a date</span>
@@ -1298,7 +1353,7 @@ export default function UnifiedDashboard() {
                                                 selected={
                                                   donationFormData.date
                                                     ? new Date(
-                                                        donationFormData.date
+                                                        donationFormData.date,
                                                       )
                                                     : undefined
                                                 }
@@ -1308,7 +1363,7 @@ export default function UnifiedDashboard() {
                                                     date: date
                                                       ? format(
                                                           date,
-                                                          "yyyy-MM-dd"
+                                                          "yyyy-MM-dd",
                                                         )
                                                       : "",
                                                   })
@@ -1318,18 +1373,46 @@ export default function UnifiedDashboard() {
                                             </PopoverContent>
                                           </Popover>
 
-                                          <Label>Time</Label>
-                                          <Input
-                                            type="time"
+                                          <Select
                                             value={donationFormData.time}
-                                            onChange={(e) =>
+                                            onValueChange={(value) =>
                                               setDonationFormData({
                                                 ...donationFormData,
-                                                time: e.target.value,
+                                                time: value,
                                               })
                                             }
-                                          />
-                                          <Label>Hospital</Label>
+                                          >
+                                            <SelectTrigger>
+                                              <SelectValue placeholder="Select time" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <div className="px-2 py-1 text-sm font-semibold">
+                                                Morning
+                                              </div>
+                                              {morningSlots.map((time) => (
+                                                <SelectItem
+                                                  key={time}
+                                                  value={time}
+                                                >
+                                                  {time}
+                                                </SelectItem>
+                                              ))}
+
+                                              <div className="px-2 py-1 text-sm font-semibold">
+                                                Afternoon
+                                              </div>
+                                              {afternoonSlots.map((time) => (
+                                                <SelectItem
+                                                  key={time}
+                                                  value={time}
+                                                >
+                                                  {time}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+
+                                          <Label>Blood Center</Label>
                                           <Input
                                             value={
                                               selectedHospital?.hospital_name ||
@@ -1371,7 +1454,7 @@ export default function UnifiedDashboard() {
                       <span className="text-sm">
                         Page {donatePage} of{" "}
                         {Math.ceil(
-                          hospitalsNeedingBlood.length / donatePerPage
+                          hospitalsNeedingBlood.length / donatePerPage,
                         )}
                       </span>
 
@@ -1380,7 +1463,7 @@ export default function UnifiedDashboard() {
                         disabled={
                           donatePage >=
                           Math.ceil(
-                            hospitalsNeedingBlood.length / donatePerPage
+                            hospitalsNeedingBlood.length / donatePerPage,
                           )
                         }
                         onClick={() => setDonatePage((p) => p + 1)}
@@ -1449,9 +1532,9 @@ export default function UnifiedDashboard() {
                                   pendingRequest.status === "fulfilled"
                                     ? "success"
                                     : pendingRequest.status === "open" ||
-                                      pendingRequest.status === "matched"
-                                    ? "open"
-                                    : "destructive"
+                                        pendingRequest.status === "matched"
+                                      ? "open"
+                                      : "destructive"
                                 }
                                 className="px-3 py-1 text-xs font-semibold uppercase tracking-wide"
                               >
@@ -1537,7 +1620,7 @@ export default function UnifiedDashboard() {
                                     </p>
                                     <p className="font-semibold">
                                       {new Date(
-                                        pendingRequest.request_date
+                                        pendingRequest.request_date,
                                       ).toLocaleDateString("en-US", {
                                         month: "short",
                                         day: "numeric",
@@ -1625,7 +1708,7 @@ export default function UnifiedDashboard() {
                                   className="w-full sm:flex-1 bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
                                   onClick={() =>
                                     handleCancelRequest(
-                                      pendingRequest.request_id
+                                      pendingRequest.request_id,
                                     )
                                   }
                                 >
@@ -1693,7 +1776,7 @@ export default function UnifiedDashboard() {
                       {bloodCentersAvailable
                         .slice(
                           (requestPage - 1) * requestPerPage,
-                          requestPage * requestPerPage
+                          requestPage * requestPerPage,
                         )
                         .map((center, index) => (
                           <Card
@@ -1720,8 +1803,8 @@ export default function UnifiedDashboard() {
                                             bt.units_available >= 10
                                               ? "bg-green-600 text-white font-semibold"
                                               : bt.units_available >= 5
-                                              ? "bg-yellow-600 text-white"
-                                              : "bg-red-600 text-white"
+                                                ? "bg-yellow-600 text-white"
+                                                : "bg-red-600 text-white"
                                           }`}
                                         >
                                           {bt.blood_type} — {bt.units_available}{" "}
@@ -1796,7 +1879,7 @@ export default function UnifiedDashboard() {
                                             ?.sort(
                                               (a, b) =>
                                                 b.units_available -
-                                                a.units_available
+                                                a.units_available,
                                             )
                                             .map((item, idx) => (
                                               <div
@@ -1870,7 +1953,7 @@ export default function UnifiedDashboard() {
                       <span className="text-sm">
                         Page {requestPage} of{" "}
                         {Math.ceil(
-                          bloodCentersAvailable.length / requestPerPage
+                          bloodCentersAvailable.length / requestPerPage,
                         )}
                       </span>
 
@@ -1879,7 +1962,7 @@ export default function UnifiedDashboard() {
                         disabled={
                           requestPage >=
                           Math.ceil(
-                            bloodCentersAvailable.length / requestPerPage
+                            bloodCentersAvailable.length / requestPerPage,
                           )
                         }
                         onClick={() => setRequestPage((p) => p + 1)}
