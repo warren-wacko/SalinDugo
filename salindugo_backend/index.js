@@ -1,7 +1,8 @@
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import dotenv from "dotenv";
 import "./cron/reactivateDonors.js";
 import "./cron/expireBags.js";
 
@@ -22,7 +23,6 @@ import pool from "./db.js";
 const app = express();
 app.set("trust proxy", 1);
 app.use(helmet());
-dotenv.config();
 
 app.use(cors());
 app.use(express.json());
