@@ -35,9 +35,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
-
 const CHART_COLORS = {
   primary: "#4ade80",
   secondary: "#60a5fa",
@@ -217,7 +214,7 @@ function LowStockSection({ lowStock }) {
                   <Badge
                     variant="outline"
                     className={`font-bold text-sm px-3 py-1 ${getUrgencyColor(
-                      stock.units_available
+                      stock.units_available,
                     )}`}
                   >
                     {stock.blood_type}
@@ -302,7 +299,7 @@ export default function AdminOverviewTab() {
     bloodTypes.forEach((bt) => {
       columnTotals[bt] = Object.values(pivot).reduce(
         (sum, row) => sum + row[bt],
-        0
+        0,
       );
     });
     columnTotals.total = Object.values(columnTotals).reduce((a, b) => a + b, 0);
@@ -356,7 +353,7 @@ export default function AdminOverviewTab() {
           .map((bt) => `<td ${colorCell(row[bt])}>${row[bt]}</td>`)
           .join("")}
         <td style="font-weight:bold;">${row.total}</td>
-      </tr>`
+      </tr>`,
     )
     .join("")}
 
@@ -391,9 +388,9 @@ export default function AdminOverviewTab() {
             }
             <td>${s.blood_type}</td>
             <td ${lowColor(s.units_available)}>${s.units_available}</td>
-          </tr>`
+          </tr>`,
         )
-        .join("")
+        .join(""),
     )
     .join("")}
 </table>
@@ -457,7 +454,7 @@ export default function AdminOverviewTab() {
             year: "numeric",
           }),
           count: Number(r.count),
-        }))
+        })),
       );
 
       setRequestTrend(
@@ -467,7 +464,7 @@ export default function AdminOverviewTab() {
             year: "numeric",
           }),
           count: Number(r.count),
-        }))
+        })),
       );
 
       console.log("BREAKDOWN RAW:", breakdown);
@@ -479,7 +476,7 @@ export default function AdminOverviewTab() {
           .map((r) => ({
             name: r.status.toLowerCase(),
             value: Number(r.count),
-          }))
+          })),
       );
 
       // Per-hospital charts
@@ -487,14 +484,14 @@ export default function AdminOverviewTab() {
         donationsHosp.map((h) => ({
           name: h.hospital_name,
           count: Number(h.total_donations),
-        }))
+        })),
       );
 
       setReqPerHospital(
         requestsHosp.map((h) => ({
           name: h.hospital_name,
           count: Number(h.total_requests),
-        }))
+        })),
       );
 
       // Low stock alerts
@@ -505,14 +502,14 @@ export default function AdminOverviewTab() {
           region: r.region,
           blood_type: r.blood_type,
           units: Number(r.total_units),
-        }))
+        })),
       );
     } catch (err) {
       console.error("[Admin Dashboard Error]", err);
       setError(
         err.response?.data?.message ||
           err.message ||
-          "Failed to load dashboard data"
+          "Failed to load dashboard data",
       );
     } finally {
       setLoading(false);
@@ -871,7 +868,7 @@ export default function AdminOverviewTab() {
                       acc[cur.region] = { region: cur.region };
                     acc[cur.region][cur.blood_type] = cur.units;
                     return acc;
-                  }, {})
+                  }, {}),
                 )}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -888,7 +885,7 @@ export default function AdminOverviewTab() {
                             acc[cur.region] = { region: cur.region };
                           acc[cur.region][cur.blood_type] = cur.units;
                           return acc;
-                        }, {})
+                        }, {}),
                       ).map((row, idx) => (
                         <Cell
                           key={idx}
@@ -896,7 +893,7 @@ export default function AdminOverviewTab() {
                         />
                       ))}
                     </Bar>
-                  )
+                  ),
                 )}
               </BarChart>
             </ResponsiveContainer>

@@ -15,6 +15,8 @@ import HomePage from "./views/homepage/page";
 import LoginPage from "./views/authentication/login/page";
 import SignUpPage from "./views/authentication/signup/page";
 import ResetPasswordPage from "./views/authentication/reset-password/page";
+import TermsPage from "./views/terms/page";
+import PrivacyPage from "./views/privacy/page";
 
 // Dashboard Pages
 import UserDashboard from "./views/user/dashboard/page";
@@ -88,6 +90,22 @@ function App() {
           element={
             <PublicRoute>
               <ResetPasswordPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/terms"
+          element={
+            <PublicRoute>
+              <TermsPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/privacy"
+          element={
+            <PublicRoute>
+              <PrivacyPage />
             </PublicRoute>
           }
         />

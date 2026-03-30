@@ -1,4 +1,4 @@
-import { useContext, Suspense, lazy } from "react";
+import { useContext, Suspense, lazy, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,10 +30,10 @@ export default function HospitalDashboard() {
     contact: user.contact_number,
     email: user.email,
   };
-
+  const [activeTab, setActiveTab] = useState("inventory");
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar setActiveTab={setActiveTab} />
       <div className="container mx-auto px-4 py-8">
         <div className="grid lg:grid-cols-4 gap-6">
           {/* Sidebar - Hospital Profile */}
@@ -75,14 +75,18 @@ export default function HospitalDashboard() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
-            <Tabs defaultValue="inventory" className="space-y-6">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="space-y-6"
+            >
               <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="requests">Requests</TabsTrigger>
                 <TabsTrigger value="donors">Donation Schedules</TabsTrigger>
                 <TabsTrigger value="inventory">Inventory</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
                 <TabsTrigger value="forecasting">Forecasting</TabsTrigger>
-                <TabsTrigger value="alerts">Alerts</TabsTrigger>
+                <TabsTrigger value="notifications">Notifications</TabsTrigger>
               </TabsList>
 
               <TabsContent value="requests" className="space-y-6">
@@ -119,7 +123,7 @@ export default function HospitalDashboard() {
               </TabsContent>
 
               {/* Alerts Tab */}
-              <TabsContent value="alerts" className="space-y-6">
+              <TabsContent value="notifications" className="space-y-6">
                 <Suspense fallback={<BloodDropLoader />}>
                   <NotificationTab accessToken={accessToken} />
                 </Suspense>

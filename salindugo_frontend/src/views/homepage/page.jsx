@@ -1,205 +1,393 @@
-"use client";
-
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
-import {
-  Heart,
-  TrendingUp,
-  BarChart3,
-  Shield,
-  ArrowRight,
-  Zap,
   Activity,
+  ArrowRight,
+  BarChart3,
+  Heart,
+  Plus,
+  Shield,
+  TrendingUp,
+  Zap,
+  Clock,
+  MapPin,
+  Bell,
 } from "lucide-react";
 
-export default function HomePage() {
+gsap.registerPlugin(ScrollTrigger);
+
+const bloodTypes = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
+
+const compatibleDonors = {
+  "O+": ["O+", "O-"],
+  "O-": ["O-"],
+  "A+": ["A+", "A-", "O+", "O-"],
+  "A-": ["A-", "O-"],
+  "B+": ["B+", "B-", "O+", "O-"],
+  "B-": ["B-", "O-"],
+  "AB+": ["AB+", "AB-", "A+", "A-", "B+", "B-", "O+", "O-"],
+  "AB-": ["AB-", "A-", "B-", "O-"],
+};
+
+const steps = [
+  {
+    num: "01",
+    icon: MapPin,
+    title: "Register & Locate",
+    desc: "Sign up in seconds and find the nearest donation center or request blood from your area.",
+  },
+  {
+    num: "02",
+    icon: Activity,
+    title: "Match & Verify",
+    desc: "Our system matches blood types, checks compatibility, and verifies donor eligibility instantly.",
+  },
+  {
+    num: "03",
+    icon: Bell,
+    title: "Connect & Save",
+    desc: "Get notified when there's a match. Coordinate pickup or donation — lives saved, time preserved.",
+  },
+];
+
+export default function Index() {
   const [activeBloodType, setActiveBloodType] = useState("O+");
-  const bloodTypes = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
+  const mainRef = useRef(null);
+  const heroLeftRef = useRef(null);
+  const heroWidgetRef = useRef(null);
+  const rolesHeaderRef = useRef(null);
+  const roleCardsRef = useRef(null);
+  const featuresHeaderRef = useRef(null);
+  const featuresGridRef = useRef(null);
+  const ctaRef = useRef(null);
+  const navRef = useRef(null);
+  const compatRef = useRef(null);
+  const stepsHeaderRef = useRef(null);
+  const stepsGridRef = useRef(null);
+  const pulseRef = useRef(null);
+  const forecastHeaderRef = useRef(null);
+  const forecastGridRef = useRef(null);
 
-  const bloodFacts = [
-    {
-      id: 1,
-      title: "Universal Donor",
-      description:
-        "O- blood is the universal donor type, can be given to anyone in emergencies",
-      gradient: "from-red-600 via-red-500 to-rose-500",
-      icon: "🩸",
-    },
-    {
-      id: 2,
-      title: "Life-Saving Gift",
-      description: "One blood donation can save up to 3 lives",
-      gradient: "from-pink-600 via-pink-500 to-red-500",
-      icon: "💝",
-    },
-    {
-      id: 3,
-      title: "Rapid Matching",
-      description:
-        "AI matching finds compatible donors and recipients in seconds",
-      gradient: "from-orange-600 via-orange-500 to-red-500",
-      icon: "⚡",
-    },
-    {
-      id: 4,
-      title: "Blood Supply Demand",
-      description:
-        "Blood donations are needed every 2 seconds somewhere in the world",
-      gradient: "from-red-600 via-rose-500 to-pink-600",
-      icon: "🌍",
-    },
-    {
-      id: 5,
-      title: "Regular Donors",
-      description:
-        "Regular donors help maintain critical blood supply for emergencies",
-      gradient: "from-rose-600 via-red-500 to-orange-500",
-      icon: "🔄",
-    },
-  ];
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.from(navRef.current, {
+        y: -80,
+        opacity: 0,
+        duration: 0.8,
+        ease: "power3.out",
+      });
 
-  const compatibleDonors = {
-    "O+": ["O+", "O-"],
-    "O-": ["O-"],
-    "A+": ["A+", "A-", "O+", "O-"],
-    "A-": ["A-", "O-"],
-    "B+": ["B+", "B-", "O+", "O-"],
-    "B-": ["B-", "O-"],
-    "AB+": ["AB+", "AB-", "A+", "A-", "B+", "B-", "O+", "O-"],
-    "AB-": ["AB-", "A-", "B-", "O-"],
-  };
+      if (heroLeftRef.current) {
+        const children = heroLeftRef.current.children;
+        gsap.from(children, {
+          y: 40,
+          opacity: 0,
+          duration: 0.7,
+          stagger: 0.12,
+          ease: "power3.out",
+          delay: 0.3,
+        });
+      }
+
+      gsap.from(heroWidgetRef.current, {
+        x: 60,
+        opacity: 0,
+        duration: 0.9,
+        ease: "power3.out",
+        delay: 0.6,
+      });
+
+      // Pulse heartbeat loop
+      if (pulseRef.current) {
+        gsap.to(pulseRef.current, {
+          scale: 1.15,
+          opacity: 0.7,
+          duration: 0.6,
+          ease: "power2.inOut",
+          yoyo: true,
+          repeat: -1,
+          repeatDelay: 0.4,
+        });
+      }
+
+      // How it works
+      gsap.from(stepsHeaderRef.current, {
+        scrollTrigger: {
+          trigger: stepsHeaderRef.current,
+          start: "top 85%",
+          toggleActions: "play none none none",
+        },
+        y: 30,
+        opacity: 0,
+        duration: 0.6,
+        ease: "power2.out",
+      });
+
+      if (stepsGridRef.current) {
+        const items = stepsGridRef.current.children;
+        gsap.from(items, {
+          scrollTrigger: {
+            trigger: stepsGridRef.current,
+            start: "top 80%",
+            toggleActions: "play none none none",
+          },
+          y: 50,
+          opacity: 0,
+          duration: 0.6,
+          stagger: 0.18,
+          ease: "power2.out",
+        });
+      }
+
+      gsap.from(rolesHeaderRef.current, {
+        scrollTrigger: {
+          trigger: rolesHeaderRef.current,
+          start: "top 85%",
+          toggleActions: "play none none none",
+        },
+        y: 30,
+        opacity: 0,
+        duration: 0.6,
+        ease: "power2.out",
+      });
+
+      if (roleCardsRef.current) {
+        const cards = roleCardsRef.current.children;
+        gsap.from(cards, {
+          scrollTrigger: {
+            trigger: roleCardsRef.current,
+            start: "top 80%",
+            toggleActions: "play none none none",
+          },
+          y: 50,
+          opacity: 0,
+          duration: 0.6,
+          stagger: 0.15,
+          ease: "power2.out",
+        });
+      }
+
+      gsap.from(featuresHeaderRef.current, {
+        scrollTrigger: {
+          trigger: featuresHeaderRef.current,
+          start: "top 85%",
+          toggleActions: "play none none none",
+        },
+        y: 30,
+        opacity: 0,
+        duration: 0.6,
+        ease: "power2.out",
+      });
+
+      if (featuresGridRef.current) {
+        const items = featuresGridRef.current.children;
+        gsap.from(items, {
+          scrollTrigger: {
+            trigger: featuresGridRef.current,
+            start: "top 80%",
+            toggleActions: "play none none none",
+          },
+          y: 40,
+          opacity: 0,
+          scale: 0.97,
+          duration: 0.5,
+          stagger: 0.12,
+          ease: "power2.out",
+        });
+      }
+
+      // Forecast section
+      gsap.from(forecastHeaderRef.current, {
+        scrollTrigger: {
+          trigger: forecastHeaderRef.current,
+          start: "top 85%",
+          toggleActions: "play none none none",
+        },
+        y: 30,
+        opacity: 0,
+        duration: 0.6,
+        ease: "power2.out",
+      });
+
+      if (forecastGridRef.current) {
+        const items = forecastGridRef.current.children;
+        gsap.from(items, {
+          scrollTrigger: {
+            trigger: forecastGridRef.current,
+            start: "top 80%",
+            toggleActions: "play none none none",
+          },
+          y: 50,
+          opacity: 0,
+          duration: 0.6,
+          stagger: 0.15,
+          ease: "power2.out",
+        });
+      }
+
+      gsap.from(ctaRef.current, {
+        scrollTrigger: {
+          trigger: ctaRef.current,
+          start: "top 85%",
+          toggleActions: "play none none none",
+        },
+        y: 40,
+        opacity: 0,
+        scale: 0.98,
+        duration: 0.7,
+        ease: "power2.out",
+      });
+    }, mainRef);
+
+    return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    if (compatRef.current) {
+      const badges = compatRef.current.querySelectorAll("[data-compat-badge]");
+      gsap.fromTo(
+        badges,
+        { scale: 0.7, opacity: 0, y: 8 },
+        {
+          scale: 1,
+          opacity: 1,
+          y: 0,
+          duration: 0.35,
+          stagger: 0.05,
+          ease: "back.out(1.7)",
+        },
+      );
+    }
+  }, [activeBloodType]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground shadow-lg">
-              <Heart className="h-5 w-5" />
+    <div ref={mainRef} className="min-h-screen bg-background text-foreground">
+      {/* Navigation */}
+      <nav
+        ref={navRef}
+        className="fixed top-0 left-0 right-0 z-50 border-b border-divider bg-background/80 backdrop-blur-xl"
+      >
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+              <Heart className="h-4 w-4 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold">SalinDugo</h1>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="ghost" asChild>
-              <Link to="/login">Sign In</Link>
-            </Button>
+            <span className="font-display text-lg font-semibold tracking-tight text-foreground">
+              SalinDugo
+            </span>
+          </Link>
+          <div className="flex items-center gap-3">
             <Button
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              size="sm"
               asChild
             >
+              <Link to="/login">Sign In</Link>
+            </Button>
+            <Button variant="primary" size="sm" asChild>
               <Link to="/register">Get Started</Link>
             </Button>
           </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Hero Section */}
-      <section className="py-24 px-4 border-b border-border/50 bg-gradient-to-b from-background via-primary/5 to-background">
-        <div className="container mx-auto max-w-6xl">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <div className="space-y-8">
-              <div>
-                <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight text-balance bg-gradient-to-r from-primary via-red-600 to-rose-600 bg-clip-text text-transparent">
-                  Save Lives
-                  <br />
-                  with Smart
-                  <br />
-                  Blood Matching
-                </h1>
-                <p className="text-lg text-muted-foreground mb-8 max-w-lg leading-relaxed">
-                  Connect donors with recipients instantly. AI-powered matching,
-                  real-time inventory tracking, and intelligent forecasting—all
-                  in one secure platform.
-                </p>
+      {/* Hero */}
+      <section className="relative pt-32 pb-20 overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)`,
+            backgroundSize: "32px 32px",
+          }}
+        />
+
+        <div className="relative mx-auto max-w-6xl px-6">
+          <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
+            {/* Left */}
+            <div ref={heroLeftRef} className="max-w-xl">
+              <div className="mb-6 flex items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  <Activity className="h-3 w-3" />
+                  Intelligent Blood Matching
+                </span>
+                {/* Heartbeat pulse */}
+                <div className="relative flex items-center justify-center">
+                  <div
+                    ref={pulseRef}
+                    className="absolute h-6 w-6 rounded-full bg-primary/20"
+                  />
+                  <Heart className="relative h-3.5 w-3.5 text-primary fill-primary" />
+                </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-[3.5rem]">
+                Precision blood matching,{" "}
+                <span className="text-primary">saving lives</span> faster.
+              </h1>
+
+              <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
+                Connect donors with recipients instantly. AI-powered
+                compatibility matching, real-time inventory tracking, and
+                intelligent demand forecasting — all in one secure platform.
+              </p>
+
+              <div className="mt-10 flex gap-3">
                 <Button
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                   size="lg"
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold group shadow-lg hover:shadow-xl hover:scale-105 transition-all"
                   asChild
                 >
-                  <Link
-                    to="/register?role=donor"
-                    className="flex items-center gap-2"
-                  >
+                  <Link to="/register">
                     Become a Donor
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-2 font-semibold bg-transparent hover:scale-105 hover:shadow-lg transition-all"
-                  asChild
-                >
-                  <Link
-                    to="/register?role=hospital"
-                    className="flex items-center gap-2"
-                  >
-                    Register Center
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </div>
             </div>
 
-            <div className="bg-card border-2 border-border rounded-2xl p-8 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300 group">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-primary"></span>
-                    Blood Type Compatibility
-                  </h3>
-                  <div className="grid grid-cols-4 gap-2">
-                    {bloodTypes.map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setActiveBloodType(type)}
-                        className={`py-3 px-2 rounded-lg font-bold text-sm transition-all duration-300 ${
-                          activeBloodType === type
-                            ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg scale-110"
-                            : "bg-muted text-foreground hover:bg-muted/80 hover:scale-110 border border-transparent hover:border-primary/50"
-                        }`}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
+            {/* Right — Compatibility Widget */}
+            <div ref={heroWidgetRef}>
+              <div className="rounded-2xl border border-divider bg-card p-8 shadow-sm">
+                <div className="mb-6 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Heart className="h-4 w-4 text-primary" />
+                  Blood Type Compatibility Checker
                 </div>
 
-                <div className="pt-6 border-t border-border">
-                  <p className="text-sm text-muted-foreground mb-4 font-medium">
+                <div className="grid grid-cols-4 gap-2">
+                  {bloodTypes.map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setActiveBloodType(type)}
+                      className={`rounded-lg py-3 font-display text-sm font-semibold transition-all duration-200 ${
+                        activeBloodType === type
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "bg-neutral-200 text-foreground hover:bg-primary hover:text-primary-foreground"
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-6 rounded-xl bg-muted p-5">
+                  <p className="text-sm text-muted-foreground">
                     Compatible donors for{" "}
-                    <span className="font-bold text-primary">
+                    <span className="font-semibold text-foreground">
                       {activeBloodType}
                     </span>
-                    :
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div ref={compatRef} className="mt-3 flex flex-wrap gap-2">
                     {compatibleDonors[activeBloodType]?.map((type) => (
-                      <div
+                      <span
                         key={type}
-                        className="px-4 py-2 bg-gradient-to-r from-primary/20 to-primary/10 text-primary rounded-full text-sm font-bold hover:from-primary/30 hover:to-primary/20 transition-all cursor-pointer border border-primary/30 hover:border-primary/60"
+                        data-compat-badge
+                        className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-3 py-1.5 font-display text-sm font-semibold text-primary"
                       >
                         {type}
-                      </div>
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -209,238 +397,418 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="py-24 px-4 border-b border-border/50 bg-gradient-to-b from-muted/30 to-background">
-        <div className="container mx-auto max-w-5xl">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-primary to-rose-600 bg-clip-text text-transparent">
-              Blood Donation Impact
+      {/* How It Works */}
+      <section className="border-t border-divider py-24">
+        <div className="mx-auto max-w-6xl px-6">
+          <div
+            ref={stepsHeaderRef}
+            className="mx-auto mb-16 max-w-2xl text-center"
+          >
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              <Clock className="h-3 w-3" />
+              Simple Process
+            </span>
+            <h2 className="text-3xl font-bold tracking-tight">
+              From sign-up to saving lives
             </h2>
-            <p className="text-lg text-muted-foreground">
-              Discover fascinating facts about blood donation and saving lives
+            <p className="mt-4 text-muted-foreground">
+              Three steps. That's all it takes to become part of a life-saving
+              network.
             </p>
           </div>
 
-          <Carousel className="w-full">
-            <CarouselContent>
-              {bloodFacts.map((fact) => (
-                <CarouselItem key={fact.id}>
-                  <div
-                    className={`bg-gradient-to-br ${fact.gradient} rounded-2xl p-12 md:p-16 text-white min-h-96 flex flex-col justify-center items-center text-center shadow-2xl hover:shadow-2xl transition-all hover:scale-105`}
-                  >
-                    <div className="text-7xl mb-6 animate-bounce">
-                      {fact.icon}
-                    </div>
-                    <h3 className="text-3xl md:text-4xl font-bold mb-4">
-                      {fact.title}
-                    </h3>
-                    <p className="text-lg md:text-xl opacity-95 max-w-2xl leading-relaxed">
-                      {fact.description}
-                    </p>
+          <div ref={stepsGridRef} className="grid gap-8 md:grid-cols-3">
+            {steps.map((step, i) => (
+              <div key={step.num} className="relative">
+                {/* Connector line */}
+                {i < steps.length - 1 && (
+                  <div className="absolute top-10 left-[calc(50%+2rem)] hidden h-px w-[calc(100%-4rem)] bg-divider md:block" />
+                )}
+                <div className="group rounded-2xl border border-divider bg-card p-8 text-center transition-shadow duration-300 hover:shadow-md">
+                  <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <step.icon className="h-5 w-5" />
                   </div>
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <CarouselPrevious className="absolute left-0 md:-left-16 top-1/2 -translate-y-1/2 bg-primary hover:bg-primary/80 text-primary-foreground border-0 hover:scale-110 transition-all" />
-            <CarouselNext className="absolute right-0 md:-right-16 top-1/2 -translate-y-1/2 bg-primary hover:bg-primary/80 text-primary-foreground border-0 hover:scale-110 transition-all" />
-          </Carousel>
-        </div>
-      </section>
-
-      {/* User Roles Section */}
-      <section className="py-24 px-4 border-b border-border/50">
-        <div className="container mx-auto max-w-6xl">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              Three Ways to Participate
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Whether you're saving lives as a donor, finding critical blood, or
-              managing inventory—SalinDugo connects you all.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Donor Card */}
-            <Card className="border-2 hover:border-primary/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group cursor-pointer">
-              <CardHeader className="pb-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:rotate-12 transition-all">
-                  <Heart className="w-6 h-6 text-primary" />
+                  <span className="font-display text-xs font-bold uppercase tracking-widest text-primary">
+                    Step {step.num}
+                  </span>
+                  <h3 className="mt-2 font-display text-lg font-semibold">
+                    {step.title}
+                  </h3>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {step.desc}
+                  </p>
                 </div>
-                <CardTitle>Donors</CardTitle>
-                <CardDescription>Make a life-saving impact</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <ul className="space-y-3 text-sm">
-                  {[
-                    "Find nearby centers",
-                    "Schedule donations",
-                    "Track donation history",
-                  ].map((item, i) => (
-                    <li
-                      key={i}
-                      className="flex gap-3 items-start hover:translate-x-1 transition-transform"
-                    >
-                      <span className="text-primary font-bold">✓</span>
-                      <span className="text-muted-foreground">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Button
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:shadow-lg transition-all"
-                  asChild
-                >
-                  <Link to="/register?role=donor">Get Started</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Recipient Card */}
-            <Card className="border-2 hover:border-secondary/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group cursor-pointer">
-              <CardHeader className="pb-4">
-                <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:rotate-12 transition-all">
-                  <Activity className="w-6 h-6 text-secondary" />
-                </div>
-                <CardTitle>Recipients</CardTitle>
-                <CardDescription>Find compatible blood quickly</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <ul className="space-y-3 text-sm">
-                  {[
-                    "Instant blood matching",
-                    "Locate centers with stock",
-                    "Secure requests",
-                  ].map((item, i) => (
-                    <li
-                      key={i}
-                      className="flex gap-3 items-start hover:translate-x-1 transition-transform"
-                    >
-                      <span className="text-secondary font-bold">✓</span>
-                      <span className="text-muted-foreground">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Button
-                  className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground hover:shadow-lg transition-all"
-                  asChild
-                >
-                  <Link to="/register?role=recipient">Request Blood</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Blood Center Card */}
-            <Card className="border-2 hover:border-accent/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group cursor-pointer">
-              <CardHeader className="pb-4">
-                <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:rotate-12 transition-all">
-                  <BarChart3 className="w-6 h-6 text-accent" />
-                </div>
-                <CardTitle>Blood Centers</CardTitle>
-                <CardDescription>Enterprise management suite</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <ul className="space-y-3 text-sm">
-                  {[
-                    "Real-time inventory tracking",
-                    "AI demand forecasting",
-                    "Regional insights",
-                  ].map((item, i) => (
-                    <li
-                      key={i}
-                      className="flex gap-3 items-start hover:translate-x-1 transition-transform"
-                    >
-                      <span className="text-accent font-bold">✓</span>
-                      <span className="text-muted-foreground">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Button
-                  className="w-full bg-accent hover:bg-accent/90 text-accent-foreground hover:shadow-lg transition-all"
-                  asChild
-                >
-                  <Link to="/register?role=hospital">Register Center</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="py-24 px-4 border-b border-border/50">
-        <div className="container mx-auto max-w-6xl">
-          <h2 className="text-4xl md:text-5xl font-bold mb-16 text-center">
-            Powerful Features
-          </h2>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Zap,
-                title: "Instant Matching",
-                desc: "AI connects compatible donors and recipients in seconds",
-              },
-              {
-                icon: TrendingUp,
-                title: "Smart Forecasting",
-                desc: "Predict demand patterns and optimize blood inventory",
-              },
-              {
-                icon: Shield,
-                title: "Secure & Verified",
-                desc: "Healthcare-grade security with complete data protection",
-              },
-            ].map((feature, i) => (
-              <div
-                key={i}
-                className="bg-card border border-border rounded-xl p-8 hover:shadow-xl hover:scale-105 hover:border-primary/50 transition-all duration-300 group cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-125 group-hover:rotate-12 transition-all">
-                  <feature.icon className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-bold text-lg mb-2 group-hover:text-primary transition-colors">
-                  {feature.title}
-                </h3>
-                <p className="text-muted-foreground">{feature.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="py-24 px-4">
-        <div className="container mx-auto text-center max-w-3xl">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Ready to Save Lives?
-          </h2>
-          <p className="text-lg text-muted-foreground mb-10">
-            Join thousands of donors and healthcare centers using SalinDugo to
-            connect blood with those who need it most.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              size="lg"
-              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold hover:shadow-lg hover:scale-105 transition-all"
-              asChild
-            >
-              <Link to="/register?role=donor">Start Donating</Link>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-2 font-semibold bg-transparent hover:scale-105 hover:shadow-lg transition-all"
-              asChild
-            >
-              <Link to="/register?role=hospital">Register Your Center</Link>
-            </Button>
+      {/* Roles Section */}
+      <section className="border-t border-divider bg-white py-24">
+        <div className="mx-auto max-w-6xl px-6">
+          <div
+            ref={rolesHeaderRef}
+            className="mx-auto mb-16 max-w-2xl text-center"
+          >
+            <h2 className="text-3xl font-bold tracking-tight">
+              Three pathways to impact
+            </h2>
+            <p className="mt-4 text-muted-foreground">
+              Whether you donate, receive, or manage — SalinDugo provides the
+              tools you need.
+            </p>
+          </div>
+
+          <div ref={roleCardsRef} className="grid gap-6 md:grid-cols-3">
+            {[
+              {
+                icon: Heart,
+                title: "Donors",
+                subtitle: "Give the gift of life",
+                items: [
+                  "Find nearby donation centers",
+                  "Schedule and track donations",
+                  "View your impact history",
+                ],
+                cta: "Start Donating",
+                href: "/donor",
+              },
+              {
+                icon: Plus,
+                title: "Recipients",
+                subtitle: "Find compatible blood quickly",
+                items: [
+                  "Instant compatibility matching",
+                  "Locate centers with available stock",
+                  "Secure, verified requests",
+                ],
+                cta: "Request Blood",
+                href: "/register",
+              },
+              {
+                icon: BarChart3,
+                title: "Blood Centers",
+                subtitle: "Enterprise-grade management",
+                items: [
+                  "Real-time inventory dashboards",
+                  "AI-driven demand forecasting",
+                  "Regional analytics and insights",
+                ],
+                cta: "Register Center",
+                href: "/register",
+              },
+            ].map((role) => (
+              <div
+                key={role.title}
+                className="group rounded-2xl border border-divider bg-card p-8 transition-shadow duration-300 hover:shadow-md"
+              >
+                <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <role.icon className="h-5 w-5" />
+                </div>
+                <h3 className="font-display text-xl font-semibold">
+                  {role.title}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {role.subtitle}
+                </p>
+                <ul className="mt-6 space-y-3">
+                  {role.items.map((item) => (
+                    <li
+                      key={item}
+                      className="flex items-start gap-2 text-sm text-foreground/80"
+                    >
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <svg
+                          width="10"
+                          height="8"
+                          viewBox="0 0 10 8"
+                          fill="none"
+                        >
+                          <path
+                            d="M1 4L3.5 6.5L9 1"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-8">
+                  <Button
+                    size="sm"
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    asChild
+                  >
+                    <Link to={role.href}>
+                      {role.cta}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="py-24">
+        <div className="mx-auto max-w-6xl px-6">
+          <div
+            ref={featuresHeaderRef}
+            className="mx-auto mb-16 max-w-2xl text-center"
+          >
+            <h2 className="text-3xl font-bold tracking-tight">
+              Built for healthcare precision
+            </h2>
+            <p className="mt-4 text-muted-foreground">
+              Every feature designed with clinical accuracy and operational
+              efficiency in mind.
+            </p>
+          </div>
+
+          <div
+            ref={featuresGridRef}
+            className="grid gap-px overflow-hidden rounded-2xl border border-divider bg-divider md:grid-cols-3"
+          >
+            {[
+              {
+                icon: Zap,
+                title: "Instant Matching",
+                desc: "A smart matching algorithm identifies blood centers that can efficiently fulfill requests and have a demand for your blood type.",
+              },
+              {
+                icon: TrendingUp,
+                title: "Demand Forecasting",
+                desc: "Predictive analytics anticipate supply needs before shortages occur.",
+              },
+              {
+                icon: Shield,
+                title: "Healthcare-Grade Security",
+                desc: "End-to-end encryption data protection protocols.",
+              },
+            ].map((feature) => (
+              <div key={feature.title} className="bg-card p-10">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
+                  <feature.icon className="h-5 w-5" />
+                </div>
+                <h3 className="font-display text-lg font-semibold">
+                  {feature.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {feature.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Demand Forecasting Showcase */}
+      <section className="border-t border-divider bg-neutral/40 py-24">
+        <div className="mx-auto max-w-6xl px-6">
+          <div
+            ref={forecastHeaderRef}
+            className="mx-auto mb-16 max-w-2xl text-center"
+          >
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-primary px-3 py-1 text-xs font-medium text-white">
+              <TrendingUp className="h-3 w-3" />
+              Predictive Intelligence
+            </span>
+            <h2 className="text-3xl font-bold tracking-tight">
+              Demand forecasting for smarter decisions
+            </h2>
+            <p className="mt-4 text-muted-foreground">
+              AI-driven analytics help blood centers anticipate demand, optimize
+              inventory, and prevent shortages before they happen.
+            </p>
+          </div>
+
+          {/* Flow explanation */}
+          <div className="mx-auto mb-16 max-w-4xl">
+            <div className="grid gap-0 md:grid-cols-4">
+              {[
+                {
+                  step: "01",
+                  label: "Collect",
+                  detail:
+                    "Historical donation records, seasonal trends, and regional health data are continuously ingested into the system.",
+                },
+                {
+                  step: "02",
+                  label: "Analyze",
+                  detail:
+                    "Machine learning models process the data to identify patterns, correlations, and emerging demand signals.",
+                },
+                {
+                  step: "03",
+                  label: "Predict",
+                  detail:
+                    "The system generates demand forecasts per blood type, per region — days or weeks before shortages could occur.",
+                },
+                {
+                  step: "04",
+                  label: "Act",
+                  detail:
+                    "Blood centers receive actionable alerts and recommendations to rebalance inventory and mobilize donors proactively.",
+                },
+              ].map((item, i) => (
+                <div
+                  key={item.step}
+                  className="relative flex flex-col items-center text-center px-4 py-6"
+                >
+                  {i < 3 && (
+                    <div className="absolute right-0 top-1/2 hidden h-px w-full -translate-y-1/2 md:block">
+                      <div className="ml-auto h-px w-1/2 bg-gradient-to-r from-transparent to-primary/30" />
+                    </div>
+                  )}
+                  <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary  font-display text-sm font-bold text-white">
+                    {item.step}
+                  </span>
+                  <h4 className="font-display text-sm font-semibold uppercase tracking-wider text-foreground">
+                    {item.label}
+                  </h4>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    {item.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="border-t border-divider">
+        <div className="mx-auto max-w-6xl px-6 py-24">
+          <div
+            ref={ctaRef}
+            className="rounded-2xl bg-primary p-12 text-center md:p-16"
+          >
+            <h2 className="font-display text-3xl font-bold text-primary-foreground">
+              Ready to make an impact?
+            </h2>
+            <p className="mx-auto mt-4 max-w-lg text-primary-foreground/70">
+              Join thousands of donors and healthcare centers using SalinDugo to
+              connect critical blood supply with those who need it most.
+            </p>
+            <div className="mt-10 flex flex-wrap justify-center gap-3">
+              <div className="flex gap-4">
+                <Button
+                  size="lg"
+                  className="bg-white text-red-700 hover:bg-gray-100 flex items-center gap-2 font-semibold"
+                  asChild
+                >
+                  <Link to="/register">
+                    Start Donating
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border/50 bg-card/50 py-12 px-4">
-        <div className="container mx-auto text-center text-sm text-muted-foreground">
-          <p>© 2025 SalinDugo. Saving lives through smart blood matching.</p>
+      <footer className="border-t border-divider bg-primary py-16">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="grid gap-10 md:grid-cols-4">
+            {/* Brand */}
+            <div className="md:col-span-1">
+              <Link to="/" className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary border-white">
+                  <Heart className="h-4 w-4 text-white" />
+                </div>
+                <span className="font-display text-lg font-semibold tracking-tight text-primary-foreground">
+                  SalinDugo
+                </span>
+              </Link>
+              <p className="mt-4 text-sm leading-relaxed text-primary-foreground/60">
+                Precision blood matching platform connecting donors, recipients,
+                and healthcare centers through AI-powered intelligence.
+              </p>
+            </div>
+
+            {/* Platform */}
+            <div>
+              <h4 className="font-display text-sm font-semibold text-primary-foreground">
+                Platform
+              </h4>
+              <ul className="mt-4 space-y-2.5">
+                {[
+                  "Donor Portal",
+                  "Recipient Matching",
+                  "Blood Center Dashboard",
+                  "Demand Forecasting",
+                ].map((item) => (
+                  <li key={item}>
+                    <span className="text-sm text-primary-foreground/50 hover:text-primary-foreground/80 transition-colors cursor-pointer">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Resources */}
+            <div>
+              <h4 className="font-display text-sm font-semibold text-primary-foreground">
+                Resources
+              </h4>
+              <ul className="mt-4 space-y-2.5">
+                {[
+                  "Documentation",
+                  "API Reference",
+                  "Blood Type Guide",
+                  "Safety Standards",
+                ].map((item) => (
+                  <li key={item}>
+                    <span className="text-sm text-primary-foreground/50 hover:text-primary-foreground/80 transition-colors cursor-pointer">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Company */}
+            <div>
+              <h4 className="font-display text-sm font-semibold text-primary-foreground">
+                Company
+              </h4>
+              <ul className="mt-4 space-y-2.5">
+                {[
+                  "About Us",
+                  "Contact",
+                  "Privacy Policy",
+                  "Terms of Service",
+                ].map((item) => (
+                  <li key={item}>
+                    <span className="text-sm text-primary-foreground/50 hover:text-primary-foreground/80 transition-colors cursor-pointer">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-primary-foreground/10 pt-8 md:flex-row">
+            <p className="text-xs text-primary-foreground/40">
+              © 2025 SalinDugo. All rights reserved. Saving lives through
+              intelligent blood matching.
+            </p>
+            <div className="flex items-center gap-1.5 text-xs text-primary-foreground/40">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+              Systems operational
+            </div>
+          </div>
         </div>
       </footer>
     </div>
