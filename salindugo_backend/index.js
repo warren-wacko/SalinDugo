@@ -64,6 +64,22 @@ app.get("/api/forecast/:centerId", async (req, res) => {
   res.json(data);
 });
 
+app.get("/api/history-total/:id", async (req, res) => {
+  const response = await fetch(
+    `${process.env.ML_API_URL}/history-total/${req.params.id}`,
+  );
+  const data = await response.json();
+  res.json(data);
+});
+
+app.get("/api/forecast-total/:id", async (req, res) => {
+  const response = await fetch(
+    `${process.env.ML_API_URL}/forecast-total/${req.params.id}?days=30`,
+  );
+  const data = await response.json();
+  res.json(data);
+});
+
 app.listen(process.env.PORT, () => {
   console.log(`Server is running on port ${process.env.PORT || 5000}`);
 });

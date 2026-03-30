@@ -173,13 +173,13 @@ export default function DemandForecastingTab({ hospitalId }) {
         const [historyRes, totalRes, detailRes, stockRes, flowRes] =
           await Promise.all([
             axios.get(
-              `${import.meta.env.VITE_API_URL}/history-total/${hospitalId}`,
+              `${import.meta.env.VITE_API_URL}/api/history-total/${hospitalId}`,
             ),
             axios.get(
-              `${import.meta.env.VITE_API_URL}/forecast-total/${hospitalId}?days=30`,
+              `${import.meta.env.VITE_API_URL}/api/forecast-total/${hospitalId}?days=30`,
             ),
             axios.get(
-              `${import.meta.env.VITE_API_URL}/forecast/${hospitalId}?days=30`,
+              `${import.meta.env.VITE_API_URL}/api/forecast/${hospitalId}?days=30`,
             ),
             axios.get(`${import.meta.env.VITE_API_URL}/api/stocks`),
             axios.get(`${import.meta.env.VITE_API_URL}/api/stocks/history`),
