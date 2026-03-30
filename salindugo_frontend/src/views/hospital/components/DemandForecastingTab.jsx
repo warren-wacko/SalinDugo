@@ -38,6 +38,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import ForecastMap from "./ForecastMap";
+import api from "../../../api/axios";
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const chartConfig = {
   total_predicted_demand: {
@@ -179,8 +180,8 @@ export default function DemandForecastingTab({ hospitalId }) {
             axios.get(
               `${import.meta.env.VITE_API_URL}/api/forecast/${hospitalId}?days=30`,
             ),
-            axios.get(`${import.meta.env.VITE_API_URL}/api/stocks`),
-            axios.get(`${import.meta.env.VITE_API_URL}/api/stocks/history`),
+            api.get(`/api/stocks`),
+            api.get(`/api/stocks/history`),
           ]);
 
         setHistoryTotal(historyRes.data || []);
