@@ -123,7 +123,7 @@ def build_features(df):
 
         return g
 
-    df = df.groupby("blood_type", group_keys=False).apply(_build)
+    df = df.groupby("blood_type", group_keys=False).apply(_build, include_groups=False)
 
     return df.dropna().reset_index(drop=True)
 
