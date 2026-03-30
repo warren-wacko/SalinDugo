@@ -13,9 +13,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # React dev server
-    ],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,7 +35,8 @@ FEATURES = [
     "weekday","month","week"
 ]
 
-model = joblib.load("model/blood_demand_model1.pkl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+model = joblib.load(os.path.join(BASE_DIR, "model/blood_demand_model1.pkl"))
 
 engine = create_engine(os.getenv("DATABASE_URL"))
 
@@ -105,6 +104,8 @@ def build_features(df):
     df["blood_type"] = df["blood_type"].str.strip().str.upper()
     df["blood_type_enc"] = df["blood_type"].map(blood_map)
 
+    
+
     def _build(g):
         g = g.sort_values("date").copy()
 
@@ -114,6 +115,7 @@ def build_features(df):
 
         g["roll_mean_7"] = g[TARGET].shift(1).rolling(7).mean()
         g["roll_std_7"] = g[TARGET].shift(1).rolling(7).std()
+        
 
         g["weekday"] = g["date"].dt.weekday
         g["month"] = g["date"].dt.month
@@ -122,13 +124,7 @@ def build_features(df):
         return g
 
     df = df.groupby("blood_type", group_keys=False).apply(_build)
-    print("Rows after feature build:", len(df))
-    print(df.columns)
-    print(
-    df.groupby("blood_type")["blood_requests"]
-    .count()
-    .sort_values(ascending=False)
-)
+
     return df.dropna().reset_index(drop=True)
 
 
@@ -142,12 +138,7 @@ def recursive_forecast(model, df, days_ahead=30):
 
     last_date = working_df["date"].max()
 
-    blood_types = (
-        working_df.groupby("blood_type")
-        .size()
-        .loc[lambda x: x >= 14]
-        .index
-    )
+    blood_types = working_df["blood_type"].unique()
 
     for step in range(1, days_ahead + 1):
 
@@ -161,27 +152,37 @@ def recursive_forecast(model, df, days_ahead=30):
 
             last_row = sub.iloc[-1]
 
+            hist = sub[TARGET]
+
+            roll_std = hist.shift(1).tail(7).std()
+            roll_std = 0 if pd.isna(roll_std) else roll_std
+
             row = {
                 "date": new_date,
                 "blood_type": bt,
                 "blood_type_enc": last_row["blood_type_enc"],
-                "lag_1": last_row[TARGET],
-                "lag_7": sub[TARGET].iloc[-7],
-                "lag_14": sub[TARGET].iloc[-14],
-                "roll_mean_7": sub[TARGET].tail(7).mean(),
-                "roll_std_7": sub[TARGET].tail(7).std(),
+                "lag_1": hist.iloc[-1],
+                "lag_7": hist.iloc[-7] if len(hist) >= 7 else hist.iloc[0],
+                "lag_14": hist.iloc[-14] if len(hist) >= 14 else hist.iloc[0],
+                "roll_mean_7": hist.shift(1).tail(7).mean(),
+                "roll_std_7": roll_std,
                 "weekday": new_date.weekday(),
                 "month": new_date.month,
-                "week": new_date.isocalendar().week
+                "week": int(new_date.isocalendar().week)
             }
 
             X_future = pd.DataFrame([row])[FEATURES]
 
+            if X_future.isnull().any().any():
+                raise ValueError(f"Invalid features detected: {row}")
+
             pred = np.expm1(model.predict(X_future))[0]
 
             # ⭐ STABILITY GUARD
-            recent_mean = sub[TARGET].tail(14).mean()
-            recent_std = sub[TARGET].tail(14).std()
+            window = min(len(sub), 14)
+
+            recent_mean = sub[TARGET].tail(window).mean()
+            recent_std = sub[TARGET].tail(window).std() or 0
 
             upper_limit = recent_mean + 2 * recent_std
             lower_limit = max(0, recent_mean - 2 * recent_std)
@@ -221,6 +222,7 @@ def forecast(hospital_id, days:int = 30):
 
     # ⭐ SAFETY CHECK
     if forecast.empty:
+        print("Forecast returned empty")
         return {
             "message": "Not enough history for forecasting (need ~14+ days)",
             "forecast": []
@@ -277,3 +279,116 @@ def forecast_total(hospital_id, days: int = 30):
     })
 
     return total.to_dict(orient="records")
+
+@app.get("/history-total/{hospital_id}")
+def history_total(hospital_id):
+
+    df = load_center_history(hospital_id)
+    df = complete_missing_dates(df)
+
+    if df.empty:
+        return []
+
+    total = (
+        df.groupby("date")["blood_requests"]
+        .sum()
+        .reset_index()
+    )
+
+    total["date"] = total["date"].astype(str)
+
+    return total.to_dict(orient="records")
+
+def compute_days_cover(stock, total_predicted_demand, days=30):
+    if total_predicted_demand <= 0:
+        return None   # no demand → safe
+
+    avg_daily = total_predicted_demand / days
+
+    if avg_daily <= 0:
+        return None   
+
+    return stock / avg_daily
+
+
+def compute_risk_level(days_cover):
+    if days_cover is None:
+        return "safe"
+
+    if days_cover <= 3:
+        return "critical"
+    elif days_cover <= 7:
+        return "warning"
+    return "safe"
+
+@app.get("/forecast-map")
+def forecast_map():
+
+    hospitals = pd.read_sql("""
+        SELECT user_id, full_name, latitude, longitude
+        FROM users
+        WHERE role = 'hospital'
+          AND latitude IS NOT NULL
+          AND longitude IS NOT NULL
+    """, engine)
+
+    results = []
+
+    for _, h in hospitals.iterrows():
+
+        hospital_id = h["user_id"]
+
+        # -------------------------------
+        # CURRENT STOCK
+        # -------------------------------
+        stock_df = pd.read_sql("""
+            SELECT COALESCE(SUM(units_available),0) AS stock
+            FROM blood_stocks
+            WHERE hospital_id = %s
+        """, engine, params=(hospital_id,))
+
+        current_stock = float(stock_df.iloc[0]["stock"] or 0)
+
+        # -------------------------------
+        # FORECAST DEMAND
+        # -------------------------------
+        df = load_center_history(hospital_id)
+
+        if df.empty:
+            total_predicted = 0
+        else:
+            df = complete_missing_dates(df)
+            df = build_features(df)
+
+            forecast = recursive_forecast(model, df, 30)
+
+            if forecast.empty:
+                total_predicted = 0
+            else:
+                total_predicted = float(
+                    forecast.groupby("date")["blood_requests"]
+                    .sum()
+                    .sum()
+                )
+
+        # ⭐ NEW CONSISTENT LOGIC
+        days_cover = compute_days_cover(
+            current_stock,
+            total_predicted,
+            30
+        )
+
+        risk_level = compute_risk_level(days_cover)
+
+        results.append({
+            "hospital_id": int(hospital_id),
+            "hospital_name": h["full_name"],
+            "latitude": float(h["latitude"]),
+            "longitude": float(h["longitude"]),
+            "current_stock": current_stock,
+            "total_predicted_demand": round(total_predicted, 2),
+            "days_cover": round(days_cover, 2) if days_cover is not None else None,
+            "risk_level": risk_level,
+        })
+
+    return results

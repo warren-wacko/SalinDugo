@@ -6,6 +6,7 @@ import {
   getInventoryHistory,
   createWalkInDonation,
   getStockHistoryByBloodType,
+  getHospitalsForecastMap,
 } from "../controller/inventoryController.js";
 import { readLimiter } from "../middleware/rateLimiter.js";
 
@@ -19,6 +20,7 @@ router.post("/walkin", authenticateToken, createWalkInDonation);
 router.get(
   "/history/:bloodType",
   authenticateToken,
-  getStockHistoryByBloodType
+  getStockHistoryByBloodType,
 );
+router.get("/hospitals/forecast-map", getHospitalsForecastMap);
 export default router;

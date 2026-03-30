@@ -1,5 +1,77 @@
 import pool from "../db.js";
 import { logAudit } from "../utils/auditLogger.js";
+import axios from "axios";
+const ML_BASE_URL = "http://localhost:8000";
+
+// =====================================
+// MAP DATA FOR FORECAST VISUALIZATION
+// =====================================
+export const getHospitalsForecastMap = async (req, res) => {
+  try {
+    // 1️⃣ get hospitals + current stock
+    const hospitalsRes = await pool.query(
+      `
+      SELECT
+        u.user_id,
+        u.full_name,
+        u.latitude,
+        u.longitude,
+        COALESCE(SUM(bs.units_available), 0) AS current_stock
+      FROM users u
+      LEFT JOIN blood_stocks bs
+        ON bs.hospital_id = u.user_id
+      WHERE u.role = 'hospital'
+        AND u.latitude IS NOT NULL
+        AND u.longitude IS NOT NULL
+      GROUP BY u.user_id
+      `,
+    );
+
+    const hospitals = hospitalsRes.rows;
+
+    // 2️⃣ fetch forecast per hospital (parallel requests)
+    const results = await Promise.all(
+      hospitals.map(async (h) => {
+        try {
+          const forecastRes = await axios.get(
+            `${ML_BASE_URL}/forecast-total/${h.user_id}?days=30`,
+          );
+
+          const forecast = forecastRes.data || [];
+
+          const total_predicted_demand = forecast.reduce(
+            (sum, d) => sum + Number(d.total_predicted_demand || 0),
+            0,
+          );
+
+          return {
+            hospital_id: h.user_id,
+            hospital_name: h.full_name,
+            latitude: Number(h.latitude),
+            longitude: Number(h.longitude),
+            current_stock: Number(h.current_stock),
+            total_predicted_demand: Number(total_predicted_demand.toFixed(2)),
+          };
+        } catch (err) {
+          // if ML fails, still return hospital info
+          return {
+            hospital_id: h.user_id,
+            hospital_name: h.full_name,
+            latitude: Number(h.latitude),
+            longitude: Number(h.longitude),
+            current_stock: Number(h.current_stock),
+            total_predicted_demand: 0,
+          };
+        }
+      }),
+    );
+
+    res.json(results);
+  } catch (err) {
+    console.error("getHospitalsForecastMap error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 // 📌 Fetch stock for a specific hospital
 export const getHospitalStock = async (req, res) => {
@@ -22,7 +94,7 @@ export const getHospitalStock = async (req, res) => {
       GROUP BY bs.stock_id
       ORDER BY bs.blood_type
       `,
-      [hospital_id]
+      [hospital_id],
     );
 
     if (existing.rows.length > 0) {
@@ -63,7 +135,7 @@ export const updateStock = async (req, res) => {
 
     const existing = await pool.query(
       `SELECT units_available FROM blood_stocks WHERE hospital_id = $1 AND blood_type = $2`,
-      [hospital_id, blood_type]
+      [hospital_id, blood_type],
     );
 
     let newUnits = units_change;
@@ -76,13 +148,13 @@ export const updateStock = async (req, res) => {
         `UPDATE blood_stocks 
          SET units_available = $1, last_updated = NOW()
          WHERE hospital_id = $2 AND blood_type = $3`,
-        [newUnits, hospital_id, blood_type]
+        [newUnits, hospital_id, blood_type],
       );
     } else {
       await pool.query(
         `INSERT INTO blood_stocks (hospital_id, blood_type, units_available)
          VALUES ($1, $2, $3)`,
-        [hospital_id, blood_type, newUnits]
+        [hospital_id, blood_type, newUnits],
       );
     }
 
@@ -90,7 +162,7 @@ export const updateStock = async (req, res) => {
       `INSERT INTO inventory_history
        (hospital_id, blood_type, change, units_after, reason, changed_by)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [hospital_id, blood_type, units_change, newUnits, reason, changed_by]
+      [hospital_id, blood_type, units_change, newUnits, reason, changed_by],
     );
 
     // ✅ NEW: If stock becomes low, notify hospital
@@ -101,7 +173,7 @@ export const updateStock = async (req, res) => {
         [
           hospital_id,
           `⚠️ Low stock alert: ${blood_type} has only ${newUnits} units left.`,
-        ]
+        ],
       );
     }
 
@@ -142,7 +214,7 @@ export const getInventoryHistory = async (req, res) => {
       WHERE ih.hospital_id = $1
       ORDER BY ih.changed_at DESC
       `,
-      [hospital_id]
+      [hospital_id],
     );
 
     res.json({ history: history.rows });
@@ -172,7 +244,7 @@ export const getStockHistoryByBloodType = async (req, res) => {
         AND blood_type = $2
       ORDER BY changed_at ASC
       `,
-      [hospital_id, bloodType]
+      [hospital_id, bloodType],
     );
 
     const formattedHistory = history.rows.map((row) => ({
@@ -251,7 +323,7 @@ export const createWalkInDonation = async (req, res) => {
         middle_initial || null,
         title || null,
         civil_status,
-      ]
+      ],
     );
 
     const donor_id = donorRes.rows[0].user_id;
@@ -262,7 +334,7 @@ export const createWalkInDonation = async (req, res) => {
          (donor_id, hospital_id, blood_type, donation_type, donation_date, status, units)
        VALUES ($1, $2, $3, 'whole_blood', NOW(), 'completed', $4)
        RETURNING donation_id`,
-      [donor_id, hospital_id, blood_type, units]
+      [donor_id, hospital_id, blood_type, units],
     );
 
     const donation_id = donationRes.rows[0].donation_id;
@@ -281,7 +353,7 @@ export const createWalkInDonation = async (req, res) => {
         $1, $2, $3, 'available', NOW(), NOW() + INTERVAL '35 days'
      )
      RETURNING bag_id`,
-        [donation_id, hospital_id, blood_type]
+        [donation_id, hospital_id, blood_type],
       );
       bagIds.push(bagRes.rows[0].bag_id);
     }
@@ -295,7 +367,7 @@ export const createWalkInDonation = async (req, res) => {
          units_available = blood_stocks.units_available + EXCLUDED.units_available,
          last_updated = NOW()
        RETURNING units_available`,
-      [hospital_id, blood_type, units]
+      [hospital_id, blood_type, units],
     );
 
     const new_units_after = stockRes.rows[0].units_available;
@@ -314,7 +386,7 @@ export const createWalkInDonation = async (req, res) => {
           req.user.id,
           donor_id,
           bag_id,
-        ]
+        ],
       );
     }
 
@@ -326,7 +398,7 @@ export const createWalkInDonation = async (req, res) => {
         [
           hospital_id,
           `⚠️ Low stock alert: ${blood_type} has only ${new_units_after} units left.`,
-        ]
+        ],
       );
     }
 
