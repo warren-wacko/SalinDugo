@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import api from "../../../api/axios";
 import ForecastMap from "./ForecastMap";
-const ML_BASE_URL = "http://localhost:8000";
+const ML_BASE_URL = import.meta.env.VITE_API_URL;
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const chartConfig = {
   total_predicted_demand: {
@@ -172,11 +172,17 @@ export default function DemandForecastingTab({ hospitalId }) {
 
         const [historyRes, totalRes, detailRes, stockRes, flowRes] =
           await Promise.all([
-            axios.get(`${ML_BASE_URL}/history-total/${hospitalId}`),
-            axios.get(`${ML_BASE_URL}/forecast-total/${hospitalId}?days=30`),
-            axios.get(`${ML_BASE_URL}/forecast/${hospitalId}?days=30`),
-            api.get(`/api/stocks`),
-            api.get(`/api/stocks/history`),
+            axios.get(
+              `${import.meta.env.VITE_API_URL}/history-total/${hospitalId}`,
+            ),
+            axios.get(
+              `${import.meta.env.VITE_API_URL}/forecast-total/${hospitalId}?days=30`,
+            ),
+            axios.get(
+              `${import.meta.env.VITE_API_URL}/forecast/${hospitalId}?days=30`,
+            ),
+            axios.get(`${import.meta.env.VITE_API_URL}/api/stocks`),
+            axios.get(`${import.meta.env.VITE_API_URL}/api/stocks/history`),
           ]);
 
         setHistoryTotal(historyRes.data || []);
