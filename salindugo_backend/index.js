@@ -80,6 +80,24 @@ app.get("/api/forecast-total/:id", async (req, res) => {
   res.json(data);
 });
 
+app.get("/api/forecast-map", async (req, res) => {
+  try {
+    const response = await fetch(`${process.env.ML_API_URL}/forecast-map`);
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("ML ERROR:", text);
+      return res.status(500).json({ error: "ML error" });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch map data" });
+  }
+});
+
 app.listen(process.env.PORT, () => {
   console.log(`Server is running on port ${process.env.PORT || 5000}`);
 });

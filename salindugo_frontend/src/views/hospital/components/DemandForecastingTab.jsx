@@ -37,9 +37,7 @@ import {
   AlertTriangle,
   CheckCircle,
 } from "lucide-react";
-import api from "../../../api/axios";
 import ForecastMap from "./ForecastMap";
-const ML_BASE_URL = import.meta.env.VITE_API_URL;
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const chartConfig = {
   total_predicted_demand: {

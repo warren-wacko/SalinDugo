@@ -11,13 +11,7 @@ import axios from "axios";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import {
   AlertCircle,
@@ -144,7 +138,7 @@ export default function MedicalSystemMap() {
       setError(null);
 
       const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/forecast-map`,
+        `${import.meta.env.VITE_API_URL}/api/forecast-map`,
       );
 
       setHospitals(response.data);
