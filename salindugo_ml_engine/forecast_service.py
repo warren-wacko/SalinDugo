@@ -46,19 +46,19 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 # =========================
 def load_center_history(hospital_id):
 
-    query = f"""
+    query = """
         SELECT
             DATE(request_date) AS date,
             blood_type,
             SUM(units_needed) AS blood_requests
         FROM requests
-        WHERE hospital_id = {int(hospital_id)}
-        AND (status IS NULL OR status != 'cancelled')
+        WHERE hospital_id = %s
+            AND (status IS NULL OR status != 'cancelled')
         GROUP BY DATE(request_date), blood_type
         ORDER BY date
     """
 
-    df = pd.read_sql(query, engine)
+    return pd.read_sql(query, engine, params=(hospital_id,))
 
 
 # =========================
@@ -206,42 +206,45 @@ def recursive_forecast(model, df, days_ahead=30):
 # =========================
 @app.get("/forecast/{hospital_id}")
 def forecast(hospital_id, days:int = 30):
+    try:
+        df = load_center_history(hospital_id)
 
-    df = load_center_history(hospital_id)
+        if df.empty:
+            return {
+                "message": "Not enough historical data",
+                "forecast": []
+            }
 
-    if df.empty:
-        return {
-            "message": "Not enough historical data",
-            "forecast": []
-        }
+        df = complete_missing_dates(df)
+        df = build_features(df)
 
-    df = complete_missing_dates(df)
-    df = build_features(df)
+        forecast = recursive_forecast(model, df, days)
 
-    forecast = recursive_forecast(model, df, days)
+        # ⭐ SAFETY CHECK
+        if forecast.empty:
+            print("Forecast returned empty")
+            return {
+                "message": "Not enough history for forecasting (need ~14+ days)",
+                "forecast": []
+            }
 
-    # ⭐ SAFETY CHECK
-    if forecast.empty:
-        print("Forecast returned empty")
-        return {
-            "message": "Not enough history for forecasting (need ~14+ days)",
-            "forecast": []
-        }
+        forecast["date"] = forecast["date"].astype(str)
 
-    forecast["date"] = forecast["date"].astype(str)
+        # dashboard-safe output
+        response = forecast[[
+            "date",
+            "blood_type",
+            "blood_requests"
+        ]].copy()
 
-    # dashboard-safe output
-    response = forecast[[
-        "date",
-        "blood_type",
-        "blood_requests"
-    ]].copy()
+        response = response.rename(columns={
+            "blood_requests": "predicted_demand"
+        })
 
-    response = response.rename(columns={
-        "blood_requests": "predicted_demand"
-    })
-
-    return response.to_dict(orient="records")
+        return response.to_dict(orient="records")
+    except Exception as e:
+        print("ERROR:", str(e))
+        return {"error": str(e)}
 
 @app.get("/forecast-total/{hospital_id}")
 def forecast_total(hospital_id, days: int = 30):
