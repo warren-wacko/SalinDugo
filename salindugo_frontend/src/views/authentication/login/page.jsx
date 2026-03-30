@@ -95,6 +95,9 @@ export default function LoginPage() {
         },
       );
 
+      const text = await res.text();
+      console.log("RESPONSE:", text);
+
       const data = await res.json();
 
       if (res.ok) {
