@@ -56,7 +56,7 @@ app.get("/test-db", async (req, res) => {
 
 app.get("/api/forecast/:centerId", async (req, res) => {
   const response = await fetch(
-    `http://localhost:8000/forecast/${req.params.centerId}`,
+    `${process.env.ML_API_URL}/forecast/${req.params.centerId}`,
   );
 
   const data = await response.json();
