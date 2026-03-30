@@ -143,7 +143,9 @@ export default function MedicalSystemMap() {
       setLoading(true);
       setError(null);
 
-      const response = await axios.get("http://localhost:8000/forecast-map");
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/forecast-map`,
+      );
 
       setHospitals(response.data);
       calculateStats(response.data);
