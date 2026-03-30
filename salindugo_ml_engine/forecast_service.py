@@ -104,28 +104,25 @@ def build_features(df):
     df["blood_type"] = df["blood_type"].str.strip().str.upper()
     df["blood_type_enc"] = df["blood_type"].map(blood_map)
 
-    
+    groups = []
 
-    def _build(g):
+    for bt, g in df.groupby("blood_type"):
         g = g.sort_values("date").copy()
 
-        g["lag_1"] = g[TARGET].shift(1)
-        g["lag_7"] = g[TARGET].shift(7)
+        g["lag_1"]  = g[TARGET].shift(1)
+        g["lag_7"]  = g[TARGET].shift(7)
         g["lag_14"] = g[TARGET].shift(14)
 
         g["roll_mean_7"] = g[TARGET].shift(1).rolling(7).mean()
-        g["roll_std_7"] = g[TARGET].shift(1).rolling(7).std()
-        
+        g["roll_std_7"]  = g[TARGET].shift(1).rolling(7).std()
 
         g["weekday"] = g["date"].dt.weekday
-        g["month"] = g["date"].dt.month
-        g["week"] = g["date"].dt.isocalendar().week.astype(int)
+        g["month"]   = g["date"].dt.month
+        g["week"]    = g["date"].dt.isocalendar().week.astype(int)
 
-        return g
+        groups.append(g)
 
-    df = df.groupby("blood_type", group_keys=False).apply(_build, include_groups=False)
-
-    return df.dropna().reset_index(drop=True)
+    return pd.concat(groups, ignore_index=True).dropna().reset_index(drop=True)
 
 
 # =========================
