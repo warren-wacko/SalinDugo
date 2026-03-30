@@ -52,13 +52,13 @@ def load_center_history(hospital_id):
             blood_type,
             SUM(units_needed) AS blood_requests
         FROM requests
-        WHERE hospital_id = %s
-            AND (status IS NULL OR status != 'cancelled')
+        WHERE hospital_id = :hospital_id
+        AND (status IS NULL OR status != 'cancelled')
         GROUP BY DATE(request_date), blood_type
         ORDER BY date
     """
 
-    return pd.read_sql(query, engine, params=(hospital_id,))
+    df = pd.read_sql(query, engine, params={"hospital_id": hospital_id})
 
 
 # =========================
