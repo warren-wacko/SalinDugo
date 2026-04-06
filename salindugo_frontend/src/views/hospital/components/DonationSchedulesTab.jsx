@@ -57,7 +57,7 @@ export const searchSchedules = (schedules, searchTerm) => {
   return schedules.filter((s) =>
     (s.donor_name || "Anonymous")
       .toLowerCase()
-      .includes(searchTerm.toLowerCase())
+      .includes(searchTerm.toLowerCase()),
   );
 };
 
@@ -94,8 +94,8 @@ export default function DonationSchedulesTab() {
 
       setSchedules((prev) =>
         prev.map((s) =>
-          s.schedule_id === scheduleId ? { ...s, status: newStatus } : s
-        )
+          s.schedule_id === scheduleId ? { ...s, status: newStatus } : s,
+        ),
       );
 
       // ✅ Toast messages with human tone
@@ -135,14 +135,14 @@ export default function DonationSchedulesTab() {
     let data = searchSchedules(schedules, searchTerm);
     if (statusFilter !== "all") {
       data = data.filter(
-        (s) => s.status.toLowerCase() === statusFilter.toLowerCase()
+        (s) => s.status.toLowerCase() === statusFilter.toLowerCase(),
       );
     }
     if (dateFilter) {
       data = data.filter(
         (s) =>
           format(new Date(s.scheduled_date), "yyyy-MM-dd") ===
-          format(dateFilter, "yyyy-MM-dd")
+          format(dateFilter, "yyyy-MM-dd"),
       );
     }
     return data;
@@ -151,7 +151,7 @@ export default function DonationSchedulesTab() {
   const totalPages = Math.ceil(filteredSchedules.length / itemsPerPage);
   const paginatedSchedules = filteredSchedules.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   const renderStatusChip = (status) => {
@@ -243,7 +243,7 @@ export default function DonationSchedulesTab() {
                 variant="outline"
                 className={cn(
                   "w-[180px] justify-start text-left font-normal",
-                  !dateFilter && "text-muted-foreground"
+                  !dateFilter && "text-muted-foreground",
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -356,9 +356,10 @@ export default function DonationSchedulesTab() {
                                   onClick={() =>
                                     handleStatusChange(
                                       s.schedule_id,
-                                      "approved"
+                                      "approved",
                                     )
                                   }
+                                  disabled={updatingId === s.schedule_id}
                                 >
                                   <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
                                   Approve
@@ -367,9 +368,10 @@ export default function DonationSchedulesTab() {
                                   onClick={() =>
                                     handleStatusChange(
                                       s.schedule_id,
-                                      "cancelled"
+                                      "cancelled",
                                     )
                                   }
+                                  disabled={updatingId === s.schedule_id}
                                 >
                                   <XCircle className="mr-2 h-4 w-4 text-red-600" />
                                   Reject
@@ -381,6 +383,7 @@ export default function DonationSchedulesTab() {
                                 onClick={() =>
                                   handleStatusChange(s.schedule_id, "completed")
                                 }
+                                disabled={updatingId === s.schedule_id}
                               >
                                 <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
                                 Mark as Completed

@@ -79,7 +79,11 @@ export default function BloodRequestsTab() {
   const [dateFilter, setDateFilter] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const [cancelDialog, setCancelDialog] = useState({ open: false, id: null });
+  const [cancelDialog, setCancelDialog] = useState({
+    open: false,
+    id: null,
+    isProcessing: false,
+  });
   const [fulfillDialog, setFulfillDialog] = useState({
     open: false,
     request: null,
@@ -87,18 +91,20 @@ export default function BloodRequestsTab() {
     units: 1,
     bags: [],
     selectedBags: [],
+    isProcessing: false,
   });
 
   const itemsPerPage = 5;
 
   const openFulfillDialog = async (req) => {
     try {
+      setFulfillDialog((prev) => ({ ...prev, isProcessing: true }));
       const stockResponse = await api.get("/api/stocks");
       const stock = stockResponse.data.find(
-        (s) => s.blood_type === req.blood_type
+        (s) => s.blood_type === req.blood_type,
       );
       const bagsResponse = await api.get(
-        `/api/requests/bloodbags/${req.blood_type}`
+        `/api/requests/bloodbags/${req.blood_type}`,
       );
       console.log("BAGS RESPONSE:", bagsResponse.data);
 
@@ -109,10 +115,12 @@ export default function BloodRequestsTab() {
         units: req.units_needed,
         bags: bagsResponse.data,
         selectedBags: [],
+        isProcessing: false,
       });
     } catch (err) {
       console.error(err);
       toast.error("Failed to load stock or bags");
+      setFulfillDialog((prev) => ({ ...prev, isProcessing: false }));
     }
   };
 
@@ -129,6 +137,7 @@ export default function BloodRequestsTab() {
     const { request, units } = fulfillDialog;
     try {
       setUpdatingId(request.request_id);
+      setFulfillDialog((prev) => ({ ...prev, isProcessing: true }));
       await api.patch(`/api/requests/${request.request_id}/fulfill`, {
         bag_ids: fulfillDialog.selectedBags,
       });
@@ -140,12 +149,14 @@ export default function BloodRequestsTab() {
         units: 1,
         bags: [],
         selectedBags: [],
+        isProcessing: false,
       });
 
       await fetchRequests();
     } catch (err) {
       console.error(err);
       toast.error(err.response?.data?.message || "Failed to fulfill request");
+      setFulfillDialog((prev) => ({ ...prev, isProcessing: false }));
     } finally {
       setUpdatingId(null);
     }
@@ -170,6 +181,9 @@ export default function BloodRequestsTab() {
   const handleStatusUpdate = async (requestId, newStatus) => {
     try {
       setUpdatingId(requestId);
+      if (cancelDialog.id === requestId) {
+        setCancelDialog((prev) => ({ ...prev, isProcessing: true }));
+      }
       await api.patch(`/api/requests/${requestId}`, { status: newStatus });
       if (newStatus === "open") {
         toast.success("Request Reopened", {
@@ -206,6 +220,7 @@ export default function BloodRequestsTab() {
       });
     } finally {
       setUpdatingId(null);
+      setCancelDialog((prev) => ({ ...prev, isProcessing: false }));
     }
   };
 
@@ -222,13 +237,13 @@ export default function BloodRequestsTab() {
           format(dateFilter, "yyyy-MM-dd")
         : true;
       return matchesStatus && matchesDate;
-    }
+    },
   );
 
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
   const paginatedRequests = filteredRequests.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   const getStatusCapitalized = (status) =>
@@ -236,7 +251,7 @@ export default function BloodRequestsTab() {
 
   const getDaysUntilExpiry = (expirationDate) => {
     return Math.ceil(
-      (new Date(expirationDate) - new Date()) / (1000 * 60 * 60 * 24)
+      (new Date(expirationDate) - new Date()) / (1000 * 60 * 60 * 24),
     );
   };
 
@@ -319,7 +334,7 @@ export default function BloodRequestsTab() {
                   variant="outline"
                   className={cn(
                     "w-[180px] justify-start text-left font-normal",
-                    !dateFilter && "text-muted-foreground"
+                    !dateFilter && "text-muted-foreground",
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
@@ -431,12 +446,12 @@ export default function BloodRequestsTab() {
                             req.status === "open"
                               ? "bg-blue-200 text-blue-700 border-blue-300"
                               : req.status === "matched"
-                              ? "bg-sky-100 text-sky-700 border-sky-200"
-                              : req.status === "fulfilled"
-                              ? "bg-green-100 text-green-700 border-green-200"
-                              : req.status === "cancelled"
-                              ? "bg-red-100 text-red-700 border-red-200"
-                              : "bg-gray-100 text-gray-700 border-gray-200"
+                                ? "bg-sky-100 text-sky-700 border-sky-200"
+                                : req.status === "fulfilled"
+                                  ? "bg-green-100 text-green-700 border-green-200"
+                                  : req.status === "cancelled"
+                                    ? "bg-red-100 text-red-700 border-red-200"
+                                    : "bg-gray-100 text-gray-700 border-gray-200"
                           }`}
                         >
                           {req.status === "open" && (
@@ -474,6 +489,7 @@ export default function BloodRequestsTab() {
                               onClick={() =>
                                 handleStatusUpdate(req.request_id, "open")
                               }
+                              disabled={updatingId === req.request_id}
                             >
                               <FolderOpen className="mr-2 h-4 w-4 text-blue-600" />
                               Open
@@ -482,12 +498,14 @@ export default function BloodRequestsTab() {
                               onClick={() =>
                                 handleStatusUpdate(req.request_id, "matched")
                               }
+                              disabled={updatingId === req.request_id}
                             >
                               <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
                               Matched
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => openFulfillDialog(req)}
+                              disabled={updatingId === req.request_id}
                             >
                               <Package className="mr-2 h-4 w-4 text-sky-600" />
                               Fulfill Request
@@ -496,6 +514,7 @@ export default function BloodRequestsTab() {
                               <DropdownMenuItem
                                 onClick={() => handleCancel(req.request_id)}
                                 className="text-red-600"
+                                disabled={updatingId === req.request_id}
                               >
                                 <XCircle className="mr-2 h-4 w-4" />
                                 Cancel
@@ -577,7 +596,8 @@ export default function BloodRequestsTab() {
         <AlertDialog
           open={cancelDialog.open}
           onOpenChange={(open) => {
-            if (!open) setCancelDialog({ open: false, id: null });
+            if (!open)
+              setCancelDialog({ open: false, id: null, isProcessing: false });
           }}
         >
           <AlertDialogContent>
@@ -591,18 +611,37 @@ export default function BloodRequestsTab() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel
-                onClick={() => setCancelDialog({ open: false, id: null })}
+                onClick={() =>
+                  setCancelDialog({
+                    open: false,
+                    id: null,
+                    isProcessing: false,
+                  })
+                }
+                disabled={cancelDialog.isProcessing}
               >
                 No, keep it
               </AlertDialogCancel>
               <AlertDialogAction
                 className="bg-red-800 text-white hover:bg-red-700"
+                disabled={cancelDialog.isProcessing}
                 onClick={() => {
                   handleStatusUpdate(cancelDialog.id, "cancelled");
-                  setCancelDialog({ open: false, id: null });
+                  setCancelDialog({
+                    open: false,
+                    id: null,
+                    isProcessing: false,
+                  });
                 }}
               >
-                Yes, cancel it
+                {cancelDialog.isProcessing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Cancelling...
+                  </>
+                ) : (
+                  "Yes, cancel it"
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -619,6 +658,7 @@ export default function BloodRequestsTab() {
               units: 1,
               bags: [],
               selectedBags: [],
+              isProcessing: false,
             })
           }
         >
@@ -713,7 +753,7 @@ export default function BloodRequestsTab() {
                   {fulfillDialog.bags.map((bag) => {
                     const daysLeft = getDaysUntilExpiry(bag.expiration_date);
                     const isSelected = fulfillDialog.selectedBags.includes(
-                      bag.bag_id
+                      bag.bag_id,
                     );
                     const statusBadge = getBagStatusBadge(daysLeft);
 
@@ -727,7 +767,7 @@ export default function BloodRequestsTab() {
                             isSelected
                               ? "border-primary bg-primary/5 shadow-md"
                               : `border-border hover:border-primary/50 ${getBagStatusColor(
-                                  daysLeft
+                                  daysLeft,
                                 )}`
                           }
                         `}
@@ -820,8 +860,10 @@ export default function BloodRequestsTab() {
                     units: 1,
                     bags: [],
                     selectedBags: [],
+                    isProcessing: false,
                   })
                 }
+                disabled={fulfillDialog.isProcessing}
               >
                 Cancel
               </AlertDialogCancel>
@@ -836,11 +878,13 @@ export default function BloodRequestsTab() {
                 `}
                 disabled={
                   fulfillDialog.selectedBags.length === 0 ||
+                  fulfillDialog.isProcessing ||
                   updatingId === fulfillDialog.request?.request_id
                 }
                 onClick={fulfillRequest}
               >
-                {updatingId === fulfillDialog.request?.request_id ? (
+                {fulfillDialog.isProcessing ||
+                updatingId === fulfillDialog.request?.request_id ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Processing...

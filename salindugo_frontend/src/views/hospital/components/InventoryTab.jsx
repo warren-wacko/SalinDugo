@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/chart";
 import api from "@/api/axios";
 import { toast } from "sonner";
-import { Plus, Copy } from "lucide-react";
+import { Plus, Copy, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -51,18 +51,19 @@ export default function InventoryTab({ accessToken }) {
   const [selectedBlood, setSelectedBlood] = useState("");
   const [generatedEmail, setGeneratedEmail] = useState("");
   const [generatedPassword, setGeneratedPassword] = useState("");
+  const [isSubmittingDonation, setIsSubmittingDonation] = useState(false);
 
   // Calculate total units
   const totalUnits = bloodStock.reduce(
     (acc, curr) => acc + curr.units_available,
-    0
+    0,
   );
 
   const capitalizeName = (name) => {
     return name
       .split(" ")
       .map((word) =>
-        word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : ""
+        word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : "",
       )
       .join(" ");
   };
@@ -116,7 +117,7 @@ export default function InventoryTab({ accessToken }) {
         `/api/stocks/history/${encodeURIComponent(bloodType)}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
-        }
+        },
       );
       setStockHistory(res.data);
       console.log("Stock history response:", res.data);
@@ -146,13 +147,14 @@ export default function InventoryTab({ accessToken }) {
 
     if (!firstName || !lastName || !selectedBlood || !units) {
       toast.error(
-        "Please fill in required fields (First Name, Last Name, Blood Type, Units)"
+        "Please fill in required fields (First Name, Last Name, Blood Type, Units)",
       );
       return;
     }
 
     const fullName = `${firstName} ${lastName}`.trim();
 
+    setIsSubmittingDonation(true);
     try {
       const res = await api.post(
         "/api/stocks/walkin",
@@ -170,7 +172,7 @@ export default function InventoryTab({ accessToken }) {
           role: formData.role || "user",
           civil_status: formData.civilStatus || null,
         },
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        { headers: { Authorization: `Bearer ${accessToken}` } },
       );
 
       // Show success toast
@@ -207,6 +209,8 @@ export default function InventoryTab({ accessToken }) {
       console.log("selectedBlood:", selectedBlood);
       console.log("formData:", formData);
       toast.error("Failed to record walk-in donation");
+    } finally {
+      setIsSubmittingDonation(false);
     }
   };
 
@@ -429,8 +433,8 @@ export default function InventoryTab({ accessToken }) {
                 status === "critical"
                   ? "border-red-600 animate-pulse shadow-lg shadow-red-500/30"
                   : status === "low"
-                  ? "border-orange-500 shadow-lg shadow-orange-500/20"
-                  : "border-border"
+                    ? "border-orange-500 shadow-lg shadow-orange-500/20"
+                    : "border-border"
               }`}
             >
               <CardContent className="p-4">
@@ -661,11 +665,19 @@ export default function InventoryTab({ accessToken }) {
                 !formData.donorGender ||
                 !formData.dateOfBirth ||
                 !formData.contactNumber ||
-                !formData.address
+                !formData.address ||
+                isSubmittingDonation
               }
               onClick={handleWalkInDonation}
             >
-              Confirm Donation
+              {isSubmittingDonation ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Confirm Donation"
+              )}
             </Button>
           </div>
         </DialogContent>
