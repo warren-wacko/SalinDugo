@@ -130,6 +130,12 @@ export default function UnifiedDashboard() {
   const [pendingRequest, setPendingRequest] = useState(null);
   const [loadingRequest, setLoadingRequest] = useState(true);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+  const [isCancellingRequest, setIsCancellingRequest] = useState(false);
+  const [isCancellingSchedule, setIsCancellingSchedule] = useState(false);
+
   // Pagination for matches (donate mode)
   const [donatePage, setDonatePage] = useState(1);
   const donatePerPage = 5;
@@ -170,6 +176,7 @@ export default function UnifiedDashboard() {
       return;
     }
 
+    setIsCancellingRequest(true);
     try {
       await api.delete(`/api/requests/${requestId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -183,6 +190,8 @@ export default function UnifiedDashboard() {
     } catch (err) {
       console.error("Error cancelling request:", err);
       toast.error(err.response?.data?.message || "Failed to cancel request");
+    } finally {
+      setIsCancellingRequest(false);
     }
   };
 
@@ -263,6 +272,7 @@ export default function UnifiedDashboard() {
       return;
     }
 
+    setIsCancellingSchedule(true);
     try {
       await api.delete(`/api/schedules/${scheduleId}`);
       toast.success("Schedule cancelled successfully");
@@ -275,6 +285,8 @@ export default function UnifiedDashboard() {
     } catch (err) {
       console.error("Error cancelling schedule:", err);
       toast.error(err.response?.data?.message || "Failed to cancel schedule");
+    } finally {
+      setIsCancellingSchedule(false);
     }
   };
 
@@ -293,6 +305,7 @@ export default function UnifiedDashboard() {
       return;
     }
 
+    setIsSubmittingRequest(true);
     try {
       const res = await api.post("/api/requests", {
         id: user.id,
@@ -345,6 +358,8 @@ export default function UnifiedDashboard() {
       } else {
         toast.error("An error occurred. Please try again.");
       }
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -373,6 +388,7 @@ export default function UnifiedDashboard() {
       return;
     }
 
+    setIsSubmittingSchedule(true);
     try {
       const payload = {
         donor_id: user.id,
@@ -427,6 +443,8 @@ export default function UnifiedDashboard() {
       } else {
         toast.error("Failed to schedule donation. Please try again.");
       }
+    } finally {
+      setIsSubmittingSchedule(false);
     }
   };
 
@@ -743,10 +761,21 @@ export default function UnifiedDashboard() {
                             <Button
                               type="submit"
                               className="w-full bg-[oklch(0.45_0.15_15)] hover:bg-[oklch(0.50_0.15_15)] text-white hover:text-white border-none transition-colors duration-200"
-                              disabled={!selectedCenterForRequest}
+                              disabled={
+                                !selectedCenterForRequest || isSubmittingRequest
+                              }
                             >
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Submit Request
+                              {isSubmittingRequest ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Submitting...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Submit Request
+                                </>
+                              )}
                             </Button>
                           </DialogFooter>
                         </form>
@@ -943,9 +972,19 @@ export default function UnifiedDashboard() {
                                     pendingSchedule.schedule_id,
                                   )
                                 }
+                                disabled={isCancellingSchedule}
                               >
-                                <X className="h-4 w-4 mr-2" />
-                                Cancel
+                                {isCancellingSchedule ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Cancelling...
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="h-4 w-4 mr-2" />
+                                    Cancel
+                                  </>
+                                )}
                               </Button>
                             </div>
                           </div>
@@ -1426,8 +1465,16 @@ export default function UnifiedDashboard() {
                                           <Button
                                             type="submit"
                                             className="w-full"
+                                            disabled={isSubmittingSchedule}
                                           >
-                                            Confirm Schedule
+                                            {isSubmittingSchedule ? (
+                                              <>
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                Confirming...
+                                              </>
+                                            ) : (
+                                              "Confirm Schedule"
+                                            )}
                                           </Button>
                                         </DialogFooter>
                                       </form>
@@ -1711,9 +1758,19 @@ export default function UnifiedDashboard() {
                                       pendingRequest.request_id,
                                     )
                                   }
+                                  disabled={isCancellingRequest}
                                 >
-                                  <X className="h-4 w-4 mr-2" />
-                                  Cancel Request
+                                  {isCancellingRequest ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      Cancelling...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <X className="h-4 w-4 mr-2" />
+                                      Cancel Request
+                                    </>
+                                  )}
                                 </Button>
                               )}
                             </div>
