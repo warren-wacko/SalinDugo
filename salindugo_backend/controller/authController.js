@@ -60,26 +60,26 @@ export const registerUser = async (req, res) => {
         civil_status || null,
         title || null,
         age || null,
-      ]
+      ],
     );
 
     // generate tokens
     const accessToken = jwt.sign(
       { id: newUser.rows[0].user_id, role: newUser.rows[0].role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     const refreshToken = jwt.sign(
       { id: newUser.rows[0].user_id },
       process.env.JWT_REFRESH,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     // store refresh token in Refresh_Tokens table
     await pool.query(
       "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
-      [newUser.rows[0].user_id, refreshToken]
+      [newUser.rows[0].user_id, refreshToken],
     );
 
     await logAudit(newUser.rows[0].user_id, "register_account", "security", {
@@ -124,7 +124,7 @@ export const loginUser = async (req, res) => {
 
     const validPassword = await bcrypt.compare(
       password,
-      user.rows[0].password_hash
+      user.rows[0].password_hash,
     );
     if (!validPassword)
       return res.status(400).json({ message: "Invalid credentials" });
@@ -137,7 +137,7 @@ export const loginUser = async (req, res) => {
         region: user.rows[0].region, // <-- ADD THIS
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     const refreshToken = jwt.sign(
@@ -147,13 +147,13 @@ export const loginUser = async (req, res) => {
         region: user.rows[0].region, // <-- ADD THIS TOO
       },
       process.env.JWT_REFRESH,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     // store refresh token
     await pool.query(
       "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
-      [user.rows[0].user_id, refreshToken]
+      [user.rows[0].user_id, refreshToken],
     );
 
     await logAudit(user.rows[0].user_id, "login_success", "security", {
@@ -203,7 +203,7 @@ export const logoutUser = async (req, res) => {
 
     await pool.query(
       "UPDATE refresh_tokens SET revoked=true WHERE token_hash=$1",
-      [refreshToken]
+      [refreshToken],
     );
     await logAudit(req.user.id, "logout", "security");
 
@@ -224,7 +224,7 @@ export const refreshTokenHandler = async (req, res) => {
     // 🔍 Check if refresh token exists in DB
     const tokenRecord = await pool.query(
       "SELECT * FROM refresh_tokens WHERE token_hash=$1 AND revoked=false AND expires_at > NOW()",
-      [refreshToken]
+      [refreshToken],
     );
 
     if (tokenRecord.rows.length === 0) return res.sendStatus(403);
@@ -237,7 +237,7 @@ export const refreshTokenHandler = async (req, res) => {
       const accessToken = jwt.sign(
         { id: decoded.id, role: decoded.role },
         process.env.JWT_SECRET,
-        { expiresIn: "15m" }
+        { expiresIn: "15m" },
       );
 
       res.json({ accessToken });
@@ -260,7 +260,7 @@ export const changePassword = async (req, res) => {
   try {
     const userRes = await pool.query(
       "SELECT password_hash FROM users WHERE user_id = $1",
-      [userId]
+      [userId],
     );
 
     const user = userRes.rows[0];
@@ -273,7 +273,7 @@ export const changePassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await pool.query(
       "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2",
-      [hashedPassword, userId]
+      [hashedPassword, userId],
     );
     await logAudit(userId, "change_password", "security", { userId });
 
@@ -300,10 +300,11 @@ export const forgotPassword = async (req, res) => {
 
     await pool.query(
       "UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE email = $3",
-      [token, expiry, email]
+      [token, expiry, email],
     );
 
-    const resetLink = `http://localhost:5173/reset-password?token=${token}`;
+    const frontendUrl = process.env.VITE_API_URL || "http://localhost:5173";
+    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
     await sendEmail(
       email,
@@ -311,19 +312,19 @@ export const forgotPassword = async (req, res) => {
       `
       Click this link to reset your password: ${resetLink}
       The link expires in 1 hour.
-    `
+    `,
     );
     await logAudit(
       userRes.rows[0].user_id,
       "request_password_reset",
       "security",
-      { email }
+      { email },
     );
 
     res.json({ message: "Password reset email sent" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Forgot password error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -334,7 +335,7 @@ export const resetPassword = async (req, res) => {
     // 1️⃣ Find user by token and check expiry
     const userRes = await pool.query(
       "SELECT * FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()",
-      [token]
+      [token],
     );
 
     if (userRes.rows.length === 0) {
@@ -349,7 +350,7 @@ export const resetPassword = async (req, res) => {
     // 3️⃣ Update user's password and clear reset token/expiry
     await pool.query(
       "UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL, updated_at = NOW() WHERE user_id = $2",
-      [hashedPassword, user.user_id]
+      [hashedPassword, user.user_id],
     );
     await logAudit(user.user_id, "reset_password", "security");
 
