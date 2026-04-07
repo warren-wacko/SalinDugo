@@ -3,21 +3,22 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Create a reusable transporter object using SMTP or other transport
+// Create a reusable transporter using Gmail API with OAuth2
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com", // e.g., smtp.gmail.com
-  port: process.env.EMAIL_PORT || 587, // 465 for SSL, 587 for TLS
-  secure: false, // true for 465, false for other ports
+  service: "gmail",
   auth: {
+    type: "OAuth2",
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    clientId: process.env.GMAIL_CLIENT_ID,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN,
   },
 });
 
 // sendEmail helper
 const sendEmail = async (to, subject, text) => {
   const mailOptions = {
-    from: `<${process.env.EMAIL_USER}>`, // sender address
+    from: process.env.EMAIL_USER,
     to,
     subject,
     text,
