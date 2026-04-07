@@ -303,6 +303,7 @@ export const forgotPassword = async (req, res) => {
       [token, expiry, email],
     );
 
+    /*  fixed the correct key */
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
