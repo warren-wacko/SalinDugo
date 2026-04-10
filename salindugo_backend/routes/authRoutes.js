@@ -11,7 +11,8 @@ import {
   resetPassword,
 } from "../controller/authController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
-import { authLimiter, loginLimiter } from "../middleware/rateLimiter.js";
+import { authLimiter } from "../middleware/rateLimiter.js";
+import { loginLimiter } from "../middleware/rateLimitDev.js";
 // Registration validation middleware
 const registerValidation = [
   body("full_name").notEmpty().withMessage("Full name is required"),
@@ -37,7 +38,7 @@ router.patch(
   "/change-password",
   authLimiter,
   authenticateToken,
-  changePassword
+  changePassword,
 );
 router.post("/forgot-password", authLimiter, forgotPassword);
 router.post("/reset-password", authLimiter, resetPassword);

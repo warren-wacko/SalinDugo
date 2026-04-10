@@ -49,6 +49,8 @@ import "leaflet/dist/leaflet.css";
 import api from "../../../api/axios";
 
 const requiredUserFields = [
+  "firstName",
+  "lastName",
   "contact_number",
   "age",
   "title",
@@ -152,46 +154,7 @@ export default function ProfilePage() {
     latitude: "",
     longitude: "",
   });
-
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  const handlePasswordChange = (e) => {
-    setPasswordData((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
-
-  const handlePasswordSave = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error("New passwords do not match");
-      return;
-    }
-
-    try {
-      await api.patch(`/api/auth/change-password`, {
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
-      });
-
-      toast.success("Password updated successfully");
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-      setIsChangingPassword(false);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update password");
-      console.error(err);
-    }
-  };
 
   const handleBackClick = () => {
     if (!profile?.profile_completed && user.role === "user") {
@@ -260,7 +223,7 @@ export default function ProfilePage() {
 
     try {
       const res = await api.get(
-        `/api/location/search?q=${encodeURIComponent(formData.searchQuery)}`
+        `/api/location/search?q=${encodeURIComponent(formData.searchQuery)}`,
       );
       const data = res.data;
 
@@ -326,8 +289,15 @@ export default function ProfilePage() {
         }
       }
     }
+
     try {
+      const full_name = [formData.firstName, formData.lastName]
+        .map((v) => (v || "").trim())
+        .filter((v) => v !== "")
+        .join(" ");
+
       const payload = {
+        full_name: full_name || null,
         contact_number: formData.contact_number || null,
         address: formData.address || null,
         city: formData.city || null,
@@ -348,17 +318,16 @@ export default function ProfilePage() {
         payload.civil_status = formData.civil_status || null;
       }
 
+      console.log("FULL NAME:", full_name);
+      console.log("PAYLOAD:", payload);
+
       const res = await api.patch(`/api/users/${user.id}`, payload);
+
       setProfile(res.data.user);
 
-      updateUser({
-        profile_completed: true,
-        city: res.data.user.city,
-        province: res.data.user.province,
-        contact_number: res.data.user.contact_number,
-      });
-
+      updateUser(res.data.user);
       setIsEditing(false);
+
       toast.success("Profile updated successfully!", {
         description: "Your changes have been saved.",
       });
@@ -377,8 +346,8 @@ export default function ProfilePage() {
     user.role === "user"
       ? "Blood Donor & Recipient"
       : user.role === "hospital"
-      ? "Blood Center Account"
-      : "Administrator Account";
+        ? "Blood Center Account"
+        : "Administrator Account";
 
   return (
     <div className="min-h-screen bg-background">
@@ -499,7 +468,7 @@ export default function ProfilePage() {
                           .map(
                             (word) =>
                               word.charAt(0).toUpperCase() +
-                              word.slice(1).toLowerCase()
+                              word.slice(1).toLowerCase(),
                           )
                           .join(" ")}
                       </span>
@@ -546,7 +515,7 @@ export default function ProfilePage() {
                           name="firstName"
                           value={formData.firstName}
                           onChange={handleChange}
-                          disabled
+                          disabled={!isEditing}
                         />
                       </div>
 
@@ -557,7 +526,7 @@ export default function ProfilePage() {
                           name="lastName"
                           value={formData.lastName}
                           onChange={handleChange}
-                          disabled
+                          disabled={!isEditing}
                         />
                       </div>
                     </div>
@@ -708,71 +677,6 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Change Password - visible for all roles */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Change Password</CardTitle>
-                <CardDescription>Update your account password</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-1 gap-4">
-                  <div>
-                    <Label className="mb-2">Current Password</Label>
-                    <Input
-                      type="password"
-                      name="currentPassword"
-                      value={passwordData.currentPassword}
-                      onChange={handlePasswordChange}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div>
-                    <Label className="mb-2">New Password</Label>
-                    <Input
-                      type="password"
-                      name="newPassword"
-                      value={passwordData.newPassword}
-                      onChange={handlePasswordChange}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div>
-                    <Label className="mb-2">Confirm New Password</Label>
-                    <Input
-                      type="password"
-                      name="confirmPassword"
-                      value={passwordData.confirmPassword}
-                      onChange={handlePasswordChange}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-2">
-                  {isEditing ? (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsChangingPassword(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button onClick={handlePasswordSave}>
-                        Save Password
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      onClick={() => setIsChangingPassword(true)}
-                      disabled={!isEditing}
-                    >
-                      Change Password
-                    </Button>
-                  )}
-                </div>
               </CardContent>
             </Card>
 

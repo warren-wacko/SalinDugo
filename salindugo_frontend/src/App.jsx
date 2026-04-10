@@ -17,6 +17,7 @@ import SignUpPage from "./views/authentication/signup/page";
 import ResetPasswordPage from "./views/authentication/reset-password/page";
 import TermsPage from "./views/terms/page";
 import PrivacyPage from "./views/privacy/page";
+import ChangePasswordPage from "./views/user/change-password/page";
 
 // Dashboard Pages
 import UserDashboard from "./views/user/dashboard/page";
@@ -123,6 +124,14 @@ function App() {
           element={
             <PrivateRoute allowedRoles={["user", "hospital", "admin"]}>
               <ProfilePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/change-password"
+          element={
+            <PrivateRoute allowedRoles={["user", "hospital", "admin"]}>
+              <ChangePasswordPage />
             </PrivateRoute>
           }
         />

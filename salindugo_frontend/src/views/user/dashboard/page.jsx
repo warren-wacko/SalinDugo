@@ -565,7 +565,9 @@ export default function UnifiedDashboard() {
                     <AvatarInitials name={userProfile.name} />
                   </AvatarFallback>
                 </Avatar>
-                <CardTitle>{formatName(userProfile.name)}</CardTitle>
+                <CardTitle>
+                  {userProfile.title + " " + formatName(userProfile.name)}
+                </CardTitle>
                 <CardDescription>
                   {mode === "donate" ? "Blood Donor" : "Blood Recipient"}
                 </CardDescription>

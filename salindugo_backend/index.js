@@ -18,10 +18,10 @@ import inventoryRoutes from "./routes/inventoryRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
 import demandRoutes from "./routes/demandRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
-
+console.log("SERVER STARTED:", Date.now());
 import pool from "./db.js";
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", true);
 app.use(helmet());
 
 app.use(cors());

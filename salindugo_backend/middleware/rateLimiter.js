@@ -25,7 +25,6 @@ export const authLimiter = rateLimit({
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  keyGenerator: ipKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,
 
