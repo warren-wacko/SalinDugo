@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import { rateLimit } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 
 const redis = new Redis(process.env.REDIS_URL);
