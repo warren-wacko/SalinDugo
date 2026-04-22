@@ -28,6 +28,7 @@ export const updateUserProfile = async (req, res) => {
       medical_conditions,
       allergies,
       address,
+      barangay,
       city,
       province,
       region,
@@ -44,33 +45,33 @@ export const updateUserProfile = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE users 
-       SET 
-         full_name         = COALESCE(NULLIF($1, '')::text, full_name),
+        SET 
+          full_name         = COALESCE(NULLIF($1, '')::text, full_name),
+          contact_number    = COALESCE(NULLIF($2, '')::text, contact_number),
 
-         contact_number    = COALESCE(NULLIF($2, '')::text, contact_number),
+          weight            = COALESCE(NULLIF($3, '')::numeric, weight),
+          height            = COALESCE(NULLIF($4, '')::numeric, height),
+          medical_conditions = COALESCE(NULLIF($5, '')::text, medical_conditions),
+          allergies         = COALESCE(NULLIF($6, '')::text, allergies),
 
-         weight            = COALESCE(NULLIF($3, '')::numeric, weight),
-         height            = COALESCE(NULLIF($4, '')::numeric, height),
-         medical_conditions = COALESCE(NULLIF($5, '')::text, medical_conditions),
-         allergies         = COALESCE(NULLIF($6, '')::text, allergies),
+          address           = COALESCE(NULLIF($7, '')::text, address),
+          barangay          = COALESCE(NULLIF($8, '')::text, barangay), 
+          city              = COALESCE(NULLIF($9, '')::text, city),
+          province          = COALESCE(NULLIF($10, '')::text, province),
+          region            = COALESCE(NULLIF($11, '')::text, region),
+          zip_code          = COALESCE(NULLIF($12, '')::text, zip_code),
 
-         address           = COALESCE(NULLIF($7, '')::text, address),
-         city              = COALESCE(NULLIF($8, '')::text, city),
-         province          = COALESCE(NULLIF($9, '')::text, province),
-         region            = COALESCE(NULLIF($10, '')::text, region),
-         zip_code          = COALESCE(NULLIF($11, '')::text, zip_code),
+          latitude          = COALESCE(NULLIF($13, '')::numeric, latitude),
+          longitude         = COALESCE(NULLIF($14, '')::numeric, longitude),
 
-         latitude          = COALESCE(NULLIF($12, '')::numeric, latitude),
-         longitude         = COALESCE(NULLIF($13, '')::numeric, longitude),
+          title             = COALESCE(NULLIF($16, '')::text, title),
+          civil_status      = COALESCE(NULLIF($17, '')::text, civil_status),
+          age               = COALESCE(NULLIF($18, '')::numeric, age),
 
-         title             = COALESCE(NULLIF($15, '')::text, title),
-         civil_status      = COALESCE(NULLIF($16, '')::text, civil_status),
-         age               = COALESCE(NULLIF($17, '')::numeric, age),
-
-         profile_completed = TRUE,
-         updated_at        = NOW()
-       WHERE user_id = $14
-       RETURNING *`,
+          profile_completed = TRUE,
+          updated_at        = NOW()
+        WHERE user_id = $15
+        RETURNING *`,
       [
         full_name, // $1
         contact_number, // $2
@@ -79,16 +80,17 @@ export const updateUserProfile = async (req, res) => {
         medical_conditions, // $5
         allergies, // $6
         address, // $7
-        city, // $8
-        province, // $9
-        region, // $10
-        zip_code, // $11
-        latitude, // $12
-        longitude, // $13
-        id, // $14 (WHERE)
-        title, // $15
-        civil_status, // $16
-        age, // $17
+        barangay, // $8
+        city, // $9
+        province, // $10
+        region, // $11
+        zip_code, // $12
+        latitude, // $13
+        longitude, // $14
+        id, // $15 (WHERE)
+        title, // $16
+        civil_status, // $17
+        age, // $18
       ],
     );
 

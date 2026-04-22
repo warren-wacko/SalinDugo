@@ -7,7 +7,7 @@ import { authenticateToken } from "../middleware/authMiddleware.js"; // reuse yo
 import {
   profileReadLimiter,
   profileUpdateLimiter,
-} from "../middleware/rateLimiter.js";
+} from "../middleware/rateLimitDev.js";
 const router = express.Router();
 
 // GET user profile
@@ -18,7 +18,7 @@ router.patch(
   "/:id",
   authenticateToken,
   profileUpdateLimiter,
-  updateUserProfile
+  updateUserProfile,
 );
 
 export default router;

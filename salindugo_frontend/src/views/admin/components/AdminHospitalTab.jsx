@@ -55,8 +55,8 @@ function StockBadge({ units }) {
         isCritical
           ? "bg-red-500/20 text-red-400"
           : isLow
-          ? "bg-amber-500/20 text-amber-400"
-          : "bg-emerald-500/20 text-emerald-400"
+            ? "bg-amber-500/20 text-amber-400"
+            : "bg-emerald-500/20 text-emerald-400"
       }`}
     >
       {isCritical && <AlertTriangle className="w-3 h-3" />}
@@ -163,7 +163,7 @@ export default function AdminHospitalTab() {
 
   const paginatedHospitals = filteredHospitals.slice(
     (page - 1) * pageSize,
-    page * pageSize
+    page * pageSize,
   );
 
   const verifiedCount = hospitals.filter((h) => h.is_verified).length;
@@ -375,10 +375,21 @@ export default function AdminHospitalTab() {
                           </td>
 
                           <td className="px-6 py-4">
-                            <Switch
-                              checked={h.is_verified}
-                              onCheckedChange={() => toggleHospital(h.user_id)}
-                            />
+                            {h.is_verified ? (
+                              <div title="Once verified, a hospital cannot be unverified">
+                                <Switch
+                                  checked={h.is_verified}
+                                  disabled={true}
+                                />
+                              </div>
+                            ) : (
+                              <Switch
+                                checked={h.is_verified}
+                                onCheckedChange={() =>
+                                  toggleHospital(h.user_id)
+                                }
+                              />
+                            )}
                           </td>
 
                           <td className="px-6 py-4">
@@ -428,7 +439,7 @@ export default function AdminHospitalTab() {
                                         </div>
                                         <p className="text-xs text-muted-foreground mt-2">
                                           {new Date(
-                                            s.last_updated
+                                            s.last_updated,
                                           ).toLocaleDateString()}
                                         </p>
                                       </div>
@@ -483,7 +494,7 @@ export default function AdminHospitalTab() {
                               {pageNum}
                             </Button>
                           );
-                        }
+                        },
                       )}
                     </div>
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useContext } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +31,7 @@ import { allowNumbersOnly, allowTextOnly } from "@/utils/validationHelpers";
 export default function SignUpPage() {
   const { login } = useContext(AuthContext);
   const [open, setOpen] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [date, setDate] = useState(undefined);
   const [fieldErrors, setFieldErrors] = useState({});
   const [errors, setErrors] = useState([]);
@@ -43,7 +42,7 @@ export default function SignUpPage() {
     confirmPassword: "",
     title: "",
     firstName: "",
-    middleInitial: "",
+    middle_initial: "",
     lastName: "",
     phone: "",
     bloodType: "",
@@ -59,11 +58,21 @@ export default function SignUpPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
     if (name === "age" && value > 150) return;
+
+    let newValue = value;
+
+    // Capitalize names
+    if (["firstName", "lastName", "middle_initial"].includes(name)) {
+      newValue = value.replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: newValue,
     }));
+
     // Clear field error when user starts typing
     if (fieldErrors[name]) {
       setFieldErrors((prev) => {
@@ -108,9 +117,8 @@ export default function SignUpPage() {
     }
 
     const payload = {
-      full_name: `${formData.firstName} ${
-        formData.middleInitial ? formData.middleInitial + ". " : ""
-      }${formData.lastName}`,
+      full_name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
+      middle_initial: formData.middle_initial?.trim() || null,
       email: formData.email,
       password: formData.password,
       blood_type: formData.bloodType,
@@ -129,7 +137,7 @@ export default function SignUpPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-        }
+        },
       );
 
       const data = await res.json();
@@ -138,8 +146,12 @@ export default function SignUpPage() {
         if (data.errors) {
           // Transform backend errors
           const formattedErrors = {};
+
           data.errors.forEach((err) => {
-            formattedErrors[err.path] = err.msg;
+            if (!formattedErrors[err.path]) {
+              formattedErrors[err.path] = [];
+            }
+            formattedErrors[err.path].push(err.msg);
           });
           setFieldErrors(formattedErrors);
         } else if (data.message) {
@@ -185,6 +197,28 @@ export default function SignUpPage() {
     e.preventDefault();
     window.location.href = "/";
   };
+
+  const passwordRules = [
+    { label: "At least 8 characters", test: (pwd) => pwd.length >= 8 },
+    {
+      label: "At least one lowercase letter",
+      test: (pwd) => /[a-z]/.test(pwd),
+    },
+    {
+      label: "At least one uppercase letter",
+      test: (pwd) => /[A-Z]/.test(pwd),
+    },
+    { label: "At least one number", test: (pwd) => /\d/.test(pwd) },
+    {
+      label: "At least one special character",
+      test: (pwd) => /[^A-Za-z0-9]/.test(pwd),
+    },
+  ];
+
+  const passwordChecks = passwordRules.map((rule) => ({
+    label: rule.label,
+    passed: rule.test(formData.password),
+  }));
 
   return (
     <div className="min-h-screen bg-background py-8 px-4">
@@ -276,12 +310,12 @@ export default function SignUpPage() {
                     />
                   </div>
                   <div className="space-y-2 md:col-span-1">
-                    <Label htmlFor="middleInitial">M.I.</Label>
+                    <Label htmlFor="middle_initial">M.I.</Label>
                     <Input
-                      id="middleInitial"
+                      id="middle_initial"
                       placeholder="D"
-                      name="middleInitial"
-                      value={formData.middleInitial}
+                      name="middle_initial"
+                      value={formData.middle_initial}
                       onChange={handleChange}
                       onBeforeInput={allowTextOnly}
                       maxLength={1}
@@ -492,15 +526,35 @@ export default function SignUpPage() {
                       placeholder="Create a strong password"
                       value={formData.password}
                       onChange={handleChange}
+                      onFocus={() => setIsPasswordFocused(true)}
+                      onBlur={() => setIsPasswordFocused(false)}
                       required
                       className="h-11"
                     />
-                    {fieldErrors.password && (
-                      <p className="text-sm text-destructive mt-1 flex items-center gap-1">
-                        <Info className="h-3 w-3" />
-                        {fieldErrors.password}
-                      </p>
+                    {isPasswordFocused && (
+                      <div className="mt-2 space-y-1">
+                        {passwordChecks.map((rule, index) => (
+                          <p
+                            key={index}
+                            className={`text-sm mt-1 flex items-center gap-1 ${
+                              rule.passed ? "text-green-600" : "text-red-500"
+                            }`}
+                          >
+                            <Info className="h-3 w-3" />
+                            {rule.label}
+                          </p>
+                        ))}
+                      </div>
                     )}
+                    {fieldErrors.password?.map((msg, i) => (
+                      <p
+                        key={i}
+                        className="text-sm text-destructive mt-1 flex items-center gap-1"
+                      >
+                        <Info className="h-3 w-3" />
+                        {msg}
+                      </p>
+                    ))}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">
@@ -514,6 +568,8 @@ export default function SignUpPage() {
                       placeholder="Confirm your password"
                       value={formData.confirmPassword}
                       onChange={handleChange}
+                      onFocus={() => setIsPasswordFocused(true)}
+                      onBlur={() => setIsPasswordFocused(false)}
                       required
                       className="h-11"
                     />

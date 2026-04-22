@@ -256,9 +256,36 @@ export default function AdminOverviewTab() {
     fetchAll();
   }, []);
 
+  const getChartSVG = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return "";
+
+    const svg = el.querySelector("svg");
+    if (!svg) return "";
+
+    return svg.outerHTML;
+  };
+
+  const statusColor = (status) => {
+    if (status === "fulfilled")
+      return 'style="color:#4ade80;font-weight:bold;"';
+    if (status === "open") return 'style="color:#60a5fa;font-weight:bold;"';
+    if (status === "matched") return 'style="color:#fbbf24;font-weight:bold;"';
+    if (status === "cancelled")
+      return 'style="color:#f87171;font-weight:bold;"';
+    return "";
+  };
+
   // 🔹 MOVE PRINT HERE so it can see summary, regionStock, lowStock
   const handlePrintReport = () => {
     if (!summary) return; // safety
+
+    const donationChart = getChartSVG("chart-donation-trend");
+    const requestStatusChart = getChartSVG("chart-request-status");
+    const requestTrendChart = getChartSVG("chart-request-trend");
+    const donationsHospitalChart = getChartSVG("chart-donations-hospital");
+    const requestsHospitalChart = getChartSVG("chart-requests-hospital");
+    const regionStockChart = getChartSVG("chart-region-stock");
 
     const win = window.open("", "_blank", "width=1024,height=900");
     if (!win) {
@@ -312,14 +339,35 @@ export default function AdminOverviewTab() {
       <html>
         <head>
           <title>Admin Summary Report</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { font-size: 22px; margin-bottom: 10px; }
-            h2 { margin-top: 30px; font-size: 18px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-            th { background: #f2f2f2; }
-          </style>
+        <style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+
+  h1 { font-size: 22px; margin-bottom: 10px; }
+  h2 { margin-top: 30px; font-size: 18px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  th { background: #f2f2f2; }
+
+  .month {
+    margin-top: 1000px;
+  }
+
+  .chart-section {
+    margin-bottom: 40px;
+    page-break-inside: avoid;
+  }
+
+  .chart-section h3 {
+    margin-bottom: 10px;
+  }
+
+  svg {
+    width: 100% !important;
+    height: 300px !important;
+    display: block;
+  }
+</style>
         </head>
         <body>
 
@@ -395,7 +443,44 @@ export default function AdminOverviewTab() {
     .join("")}
 </table>
 
+<h2>Charts</h2>
 
+<div class="chart-section">
+  <h3>Monthly Donation Trend</h3>
+  ${donationChart}
+</div>
+
+<div class="chart-section">
+  <h3>Request Status Distribution</h3>
+  ${requestStatusChart}
+
+  <p style="margin-top:10px; font-size:12px;">
+    <span ${statusColor("fulfilled")}>● fulfilled</span>
+    <span ${statusColor("open")}>● open</span>
+    <span ${statusColor("matched")}>● matched</span>
+    <span ${statusColor("cancelled")}>● cancelled</span>
+  </p>
+</div>
+
+<div class="chart-section">
+  <h3>Monthly Blood Requests</h3>
+  ${requestTrendChart}
+</div>
+
+<div class="chart-section">
+  <h3>Donations per Blood Center</h3>
+  ${donationsHospitalChart}
+</div>
+
+<div class="chart-section">
+  <h3>Requests per Blood Center</h3>
+  ${requestsHospitalChart}
+</div>
+
+<div class="chart-section">
+  <h3>Blood Stock by Region</h3>
+  ${regionStockChart}
+</div>
         </body>
       </html>
     `);
@@ -632,7 +717,7 @@ export default function AdminOverviewTab() {
             subtitle="Last months performance"
             className="lg:col-span-2"
           >
-            <div className="h-72">
+            <div id="chart-donation-trend" className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={donationTrend}>
                   <defs>
@@ -689,7 +774,7 @@ export default function AdminOverviewTab() {
 
           {/* Request Breakdown Pie */}
           <ChartCard title="Request Status" subtitle="Distribution by status">
-            <div className="h-72">
+            <div id="chart-request-status" className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -735,7 +820,7 @@ export default function AdminOverviewTab() {
             title="Monthly Blood Requests"
             subtitle="Request volume trend"
           >
-            <div className="h-64">
+            <div id="chart-request-trend" className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={requestTrend}>
                   <CartesianGrid
@@ -776,7 +861,7 @@ export default function AdminOverviewTab() {
             title="Donations per Blood Center"
             subtitle="Top performing Blood Centers"
           >
-            <div className="h-64">
+            <div id="chart-donations-hospital" className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={donPerHospital} layout="vertical">
                   <CartesianGrid
@@ -817,7 +902,7 @@ export default function AdminOverviewTab() {
             title="Requests per Blood Center"
             subtitle="Demand distribution"
           >
-            <div className="h-64">
+            <div id="chart-requests-hospital" className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={reqPerHospital} layout="vertical">
                   <CartesianGrid
@@ -859,7 +944,7 @@ export default function AdminOverviewTab() {
           title="Blood Stock by Region"
           subtitle="Total units available per region"
         >
-          <div className="h-64">
+          <div id="chart-region-stock" className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={Object.values(

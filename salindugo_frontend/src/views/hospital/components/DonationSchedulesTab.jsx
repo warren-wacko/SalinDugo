@@ -334,7 +334,7 @@ export default function DonationSchedulesTab() {
                     </td>
                     <td className="px-6 py-4">{renderStatusChip(s.status)}</td>
                     <td className="px-6 py-4 text-right">
-                      {s.status !== "completed" && (
+                      {s.status !== "completed" && s.status !== "cancelled" && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button

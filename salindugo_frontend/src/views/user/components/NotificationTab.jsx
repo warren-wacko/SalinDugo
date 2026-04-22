@@ -25,6 +25,7 @@ import api from "../../../api/axios";
 const formatDateTime = (dateString) => {
   const date = new Date(dateString);
   return date.toLocaleString("en-US", {
+    year: "numeric",
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -44,7 +45,7 @@ export function NotificationTab({ accessToken }) {
     setLoading(true);
     try {
       const res = await api.get(
-        `/api/notifications?page=${pageToFetch}&limit=${limit}`
+        `/api/notifications?page=${pageToFetch}&limit=${limit}`,
       );
 
       const data = res.data;
@@ -62,8 +63,8 @@ export function NotificationTab({ accessToken }) {
       await api.patch(`/api/notifications/${id}/read`, {});
       setNotifications((prev) =>
         prev.map((n) =>
-          n.notification_id === id ? { ...n, is_read: true } : n
-        )
+          n.notification_id === id ? { ...n, is_read: true } : n,
+        ),
       );
     } catch (err) {
       console.error("Error marking notification as read:", err);
@@ -136,8 +137,8 @@ export function NotificationTab({ accessToken }) {
               n.sender_role === "hospital"
                 ? "🏥"
                 : n.sender_role === "user"
-                ? "🧍‍♂️"
-                : "🩸";
+                  ? "🧍‍♂️"
+                  : "🩸";
             return (
               <div
                 key={n.notification_id}
@@ -146,8 +147,8 @@ export function NotificationTab({ accessToken }) {
                   n.is_read
                     ? "opacity-70"
                     : n.role === "hospital"
-                    ? "bg-red-50 dark:bg-red-900/20"
-                    : "bg-blue-50 dark:bg-blue-900/20"
+                      ? "bg-red-50 dark:bg-red-900/20"
+                      : "bg-blue-50 dark:bg-blue-900/20"
                 }`}
               >
                 <div className="flex justify-between">

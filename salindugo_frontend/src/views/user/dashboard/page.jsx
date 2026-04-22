@@ -97,6 +97,15 @@ export default function UnifiedDashboard() {
   const morningSlots = generateTimeSlots("08:00", "11:30", 30);
   const afternoonSlots = generateTimeSlots("13:30", "16:30", 30);
 
+  const formatTo12Hour = (time) => {
+    const [hour, minute] = time.split(":").map(Number);
+
+    const period = hour >= 12 ? "PM" : "AM";
+    const formattedHour = hour % 12 || 12; // converts 0 → 12
+
+    return `${formattedHour}:${minute.toString().padStart(2, "0")} ${period}`;
+  };
+  const formattedAfternoonSlots = afternoonSlots.map(formatTo12Hour);
   const workingHours = [...morningSlots, ...afternoonSlots];
 
   const [open, setOpen] = useState(false);
@@ -378,6 +387,16 @@ export default function UnifiedDashboard() {
       return;
     }
 
+    // Validate that the selected date is not in the past
+    const selectedDate = new Date(donationFormData.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (selectedDate < today) {
+      toast.error("Cannot schedule donations for past dates");
+      return;
+    }
+
     if (!donationFormData.time) {
       toast.error("Please select a time");
       return;
@@ -585,8 +604,14 @@ export default function UnifiedDashboard() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">
-                          {userProfile.city + ", " + userProfile.province}
+                        <span className="text-sm truncate flex-1 min-w-0">
+                          {[
+                            userProfile.barangay,
+                            userProfile.city,
+                            userProfile.province,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -829,18 +854,26 @@ export default function UnifiedDashboard() {
                                   </p>
                                 </div>
                               </div>
-                              <Badge
-                                variant={
-                                  pendingSchedule.status === "approved"
-                                    ? "success"
-                                    : pendingSchedule.status === "pending"
-                                      ? "secondary"
-                                      : "outline"
-                                }
-                                className="px-3 py-1 text-xs font-semibold uppercase tracking-wide"
-                              >
-                                {pendingSchedule.status}
-                              </Badge>
+
+                              {/* RIGHT SIDE */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">
+                                  Schedule Status:
+                                </span>
+
+                                <Badge
+                                  variant={
+                                    pendingSchedule.status === "approved"
+                                      ? "success"
+                                      : pendingSchedule.status === "pending"
+                                        ? "secondary"
+                                        : "outline"
+                                  }
+                                  className="px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+                                >
+                                  {pendingSchedule.status}
+                                </Badge>
+                              </div>
                             </div>
 
                             {/* Hospital Info */}
@@ -875,6 +908,7 @@ export default function UnifiedDashboard() {
                                       {new Date(
                                         pendingSchedule.scheduled_date,
                                       ).toLocaleDateString("en-US", {
+                                        year: "numeric",
                                         weekday: "short",
                                         month: "short",
                                         day: "numeric",
@@ -1409,6 +1443,17 @@ export default function UnifiedDashboard() {
                                                       : "",
                                                   })
                                                 }
+                                                disabled={(date) =>
+                                                  date <
+                                                  new Date(
+                                                    new Date().setHours(
+                                                      0,
+                                                      0,
+                                                      0,
+                                                      0,
+                                                    ),
+                                                  )
+                                                }
                                                 initialFocus
                                               />
                                             </PopoverContent>
@@ -1442,14 +1487,16 @@ export default function UnifiedDashboard() {
                                               <div className="px-2 py-1 text-sm font-semibold">
                                                 Afternoon
                                               </div>
-                                              {afternoonSlots.map((time) => (
-                                                <SelectItem
-                                                  key={time}
-                                                  value={time}
-                                                >
-                                                  {time}
-                                                </SelectItem>
-                                              ))}
+                                              {formattedAfternoonSlots.map(
+                                                (time) => (
+                                                  <SelectItem
+                                                    key={time}
+                                                    value={time}
+                                                  >
+                                                    {time}
+                                                  </SelectItem>
+                                                ),
+                                              )}
                                             </SelectContent>
                                           </Select>
 

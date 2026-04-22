@@ -53,7 +53,18 @@ export default function InventoryHistoryTab({ accessToken }) {
       console.log("Fetched history:", res.data.history);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load history");
+
+      const status = err.response?.status;
+
+      if (status === 429) {
+        toast.error("Too many requests. Please wait before trying again.");
+      } else if (status === 401) {
+        toast.error("Unauthorized. Please log in again.");
+      } else if (status === 500) {
+        toast.error("Server error. Try again later.");
+      } else {
+        toast.error("Failed to load history");
+      }
     }
   };
 
@@ -91,7 +102,7 @@ export default function InventoryHistoryTab({ accessToken }) {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedHistory = filteredHistory.slice(
     startIndex,
-    startIndex + itemsPerPage
+    startIndex + itemsPerPage,
   );
 
   // Reset page if filters reduce results
@@ -380,8 +391,8 @@ export default function InventoryHistoryTab({ accessToken }) {
                         {selected.donor_id
                           ? `Donor ID: ${selected.donor_id}`
                           : selected.recipient_id
-                          ? `Recipient ID: ${selected.recipient_id}`
-                          : "N/A"}
+                            ? `Recipient ID: ${selected.recipient_id}`
+                            : "N/A"}
                       </span>
                       <span className="text-[10px] uppercase font-bold tracking-tighter">
                         {selected.reason ? selected.reason : "No reason"}
@@ -424,7 +435,7 @@ export default function InventoryHistoryTab({ accessToken }) {
                           <span className="text-sm font-bold font-mono">
                             {format(
                               new Date(selected.changed_at),
-                              "dd.MM.yyyy"
+                              "dd.MM.yyyy",
                             )}
                           </span>
                         </div>
@@ -437,7 +448,7 @@ export default function InventoryHistoryTab({ accessToken }) {
                               "text-xs ml-1 font-bold px-1.5 py-0.5 rounded",
                               selected.change > 0
                                 ? "bg-green-100 text-green-700"
-                                : "bg-orange-100 text-orange-700"
+                                : "bg-orange-100 text-orange-700",
                             )}
                           >
                             {selected.change > 0 ? "INCOMING" : "OUTGOING"}
@@ -451,7 +462,7 @@ export default function InventoryHistoryTab({ accessToken }) {
                             "text-xs ml-1 font-bold px-1.5 py-0.5 rounded",
                             selected.bag_status === "available"
                               ? "bg-green-100 text-green-700"
-                              : "bg-orange-100 text-orange-700"
+                              : "bg-orange-100 text-orange-700",
                           )}
                         >
                           {selected.bag_status === "available"

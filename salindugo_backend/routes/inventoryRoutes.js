@@ -8,7 +8,7 @@ import {
   getStockHistoryByBloodType,
   getHospitalsForecastMap,
 } from "../controller/inventoryController.js";
-import { readLimiter } from "../middleware/rateLimiter.js";
+import { readLimiter } from "../middleware/rateLimitDev.js";
 
 const router = express.Router();
 

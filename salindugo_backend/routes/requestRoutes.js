@@ -11,11 +11,12 @@ import {
   getAvailableBags,
 } from "../controller/requestController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
+import { requestBloodLimiter } from "../middleware/rateLimitDev.js";
 
 const router = express.Router();
 
 // 🩸 Create a new blood request
-router.post("/", authenticateToken, createRequest);
+router.post("/", authenticateToken, requestBloodLimiter, createRequest);
 
 // 🩸 Get all requests (for blood centers)
 router.get("/", authenticateToken, getAllRequests);

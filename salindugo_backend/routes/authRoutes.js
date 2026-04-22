@@ -11,8 +11,7 @@ import {
   resetPassword,
 } from "../controller/authController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
-import { authLimiter } from "../middleware/rateLimiter.js";
-import { loginLimiter } from "../middleware/rateLimitDev.js";
+import { loginLimiter, authLimiter } from "../middleware/rateLimitDev.js";
 // Registration validation middleware
 const registerValidation = [
   body("full_name").notEmpty().withMessage("Full name is required"),
@@ -27,7 +26,9 @@ const registerValidation = [
     .matches(/\d/)
     .withMessage("Password must contain a number")
     .matches(/[^A-Za-z0-9]/)
-    .withMessage("Password must contain a special character"),
+    .withMessage("Password must contain a special character")
+    .matches(/\S/)
+    .withMessage("Password cannot be only whitespace"),
 ];
 
 router.post("/register", authLimiter, registerValidation, registerUser);

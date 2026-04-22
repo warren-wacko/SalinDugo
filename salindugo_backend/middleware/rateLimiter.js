@@ -60,7 +60,7 @@ export const profileUpdateLimiter = rateLimit({
 // Normal read limiter
 export const readLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 50,
   keyGenerator: ipKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,

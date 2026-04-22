@@ -466,7 +466,9 @@ export default function BloodRequestsTab() {
                           {req.status === "cancelled" && (
                             <XCircle className="w-3.5 h-3.5 mr-1.5 text-red-600" />
                           )}
-                          {getStatusCapitalized(req.status)}
+                          {req.status === "open"
+                            ? "Active"
+                            : getStatusCapitalized(req.status)}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -492,7 +494,7 @@ export default function BloodRequestsTab() {
                               disabled={updatingId === req.request_id}
                             >
                               <FolderOpen className="mr-2 h-4 w-4 text-blue-600" />
-                              Open
+                              Active
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>

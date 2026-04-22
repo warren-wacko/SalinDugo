@@ -91,15 +91,42 @@ export default function AdminUsersTab() {
   }, [searchValue]);
 
   const filteredUsers = useMemo(() => {
-    return users
+    const q = search.toLowerCase();
+
+    let filtered = users
       .filter((u) => (roleFilter === "all" ? true : u.role === roleFilter))
       .filter((u) => {
-        const q = search.toLowerCase();
         return (
           u.full_name?.toLowerCase().includes(q) ||
           u.email?.toLowerCase().includes(q)
         );
       });
+
+    // Sort by relevance if there's a search query
+    if (q) {
+      filtered.sort((a, b) => {
+        const aName = a.full_name?.toLowerCase() || "";
+        const bName = b.full_name?.toLowerCase() || "";
+        const aEmail = a.email?.toLowerCase() || "";
+        const bEmail = b.email?.toLowerCase() || "";
+
+        // Calculate relevance score
+        const getScore = (str) => {
+          if (str === q) return 1000; // exact match
+          if (str.startsWith(q)) return 500; // starts with
+          // Check if any word in the string starts with query
+          if (str.split(" ").some((word) => word.startsWith(q))) return 300;
+          return 0; // contains somewhere
+        };
+
+        const scoreA = Math.max(getScore(aName), getScore(aEmail));
+        const scoreB = Math.max(getScore(bName), getScore(bEmail));
+
+        return scoreB - scoreA; // Higher score first
+      });
+    }
+
+    return filtered;
   }, [users, roleFilter, search]);
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize);
@@ -116,7 +143,7 @@ export default function AdminUsersTab() {
       hospitals: users.filter((u) => u.role === "hospital").length,
       donors: users.filter((u) => u.role === "user").length,
     }),
-    [users]
+    [users],
   );
 
   const getTableHeaders = () => {
@@ -443,7 +470,7 @@ export default function AdminUsersTab() {
                           {pageNum}
                         </Button>
                       );
-                    }
+                    },
                   )}
                 </div>
 

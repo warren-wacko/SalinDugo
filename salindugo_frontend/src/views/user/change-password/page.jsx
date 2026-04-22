@@ -13,9 +13,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import api from "../../../api/axios";
 import { AuthContext } from "../../../context/AuthContext";
+import { Info } from "lucide-react";
 
 const ChangePasswordPage = () => {
   const { user } = useContext(AuthContext);
+
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+
+  const passwordRules = [
+    { label: "At least 8 characters", test: (pwd) => pwd.length >= 8 },
+    {
+      label: "At least one lowercase letter",
+      test: (pwd) => /[a-z]/.test(pwd),
+    },
+    {
+      label: "At least one uppercase letter",
+      test: (pwd) => /[A-Z]/.test(pwd),
+    },
+    { label: "At least one number", test: (pwd) => /\d/.test(pwd) },
+    {
+      label: "At least one special character",
+      test: (pwd) => /[^A-Za-z0-9]/.test(pwd),
+    },
+  ];
 
   const handleBack = () => {
     if (!user) return;
@@ -80,6 +100,14 @@ const ChangePasswordPage = () => {
     }
   };
 
+  const passwordChecks = passwordRules.map((rule) => ({
+    label: rule.label,
+    passed: rule.test(passwordData.newPassword),
+  }));
+
+  const isPasswordValid = passwordChecks.every((r) => r.passed);
+  const hasInvalidPassword = passwordChecks.some((r) => !r.passed);
+
   return (
     <div className="max-w-md mx-auto mt-10">
       <Button variant="ghost" className="mb-4" onClick={handleBack}>
@@ -110,7 +138,24 @@ const ChangePasswordPage = () => {
               name="newPassword"
               value={passwordData.newPassword}
               onChange={handlePasswordChange}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
             />
+            {isPasswordFocused && (
+              <div className="mt-2 space-y-1">
+                {passwordChecks.map((rule, index) => (
+                  <p
+                    key={index}
+                    className={`text-sm mt-1 flex items-center gap-1 ${
+                      rule.passed ? "text-green-600" : "text-red-500"
+                    }`}
+                  >
+                    <Info className="h-3 w-3" />
+                    {rule.label}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -120,6 +165,8 @@ const ChangePasswordPage = () => {
               name="confirmPassword"
               value={passwordData.confirmPassword}
               onChange={handlePasswordChange}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
             />
           </div>
 

@@ -18,6 +18,7 @@ export const registerUser = async (req, res) => {
 
     const {
       full_name,
+      middle_initial, // ✅ added
       email,
       password,
       role,
@@ -36,6 +37,7 @@ export const registerUser = async (req, res) => {
     const userExists = await pool.query("SELECT * FROM users WHERE email=$1", [
       email,
     ]);
+
     if (userExists.rows.length > 0) {
       return res.status(400).json({ message: "Email already registered" });
     }
@@ -45,11 +47,37 @@ export const registerUser = async (req, res) => {
 
     // insert user
     const newUser = await pool.query(
-      `INSERT INTO users (full_name, email, password_hash, role, blood_type, date_of_birth, contact_number, gender, civil_status, title, age) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
-      RETURNING user_id, email, role, full_name, blood_type, date_of_birth, contact_number, gender, civil_status, title, age`,
+      `INSERT INTO users (
+        full_name,
+        middle_initial, -- ✅ added
+        email,
+        password_hash,
+        role,
+        blood_type,
+        date_of_birth,
+        contact_number,
+        gender,
+        civil_status,
+        title,
+        age
+      ) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+      RETURNING 
+        user_id,
+        email,
+        role,
+        full_name,
+        middle_initial, -- ✅ added
+        blood_type,
+        date_of_birth,
+        contact_number,
+        gender,
+        civil_status,
+        title,
+        age`,
       [
         full_name,
+        middle_initial || null, // ✅ prevent undefined
         email,
         hashedPassword,
         role || "user",
@@ -76,7 +104,7 @@ export const registerUser = async (req, res) => {
       { expiresIn: "7d" },
     );
 
-    // store refresh token in Refresh_Tokens table
+    // store refresh token
     await pool.query(
       "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '7 days')",
       [newUser.rows[0].user_id, refreshToken],
@@ -95,6 +123,7 @@ export const registerUser = async (req, res) => {
         role: newUser.rows[0].role,
         email: newUser.rows[0].email,
         full_name: newUser.rows[0].full_name,
+        middle_initial: newUser.rows[0].middle_initial, // ✅ added
         blood_type: newUser.rows[0].blood_type,
         date_of_birth: newUser.rows[0].date_of_birth,
         contact_number: newUser.rows[0].contact_number,
@@ -171,6 +200,7 @@ export const loginUser = async (req, res) => {
         blood_type: user.rows[0].blood_type,
         date_of_birth: user.rows[0].date_of_birth,
         city: user.rows[0].city,
+        barangay: user.rows[0].barangay,
         province: user.rows[0].province,
         contact_number: user.rows[0].contact_number,
         last_donation_date: user.rows[0].last_donation_date,

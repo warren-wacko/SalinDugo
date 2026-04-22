@@ -61,6 +61,7 @@ const requiredUserFields = [
   "allergies",
   "address",
   "city",
+  "barangay",
   "province",
   "region",
   "zip_code",
@@ -97,7 +98,14 @@ function LocationPicker({ position, setPosition, isEditing, setFormData }) {
             setFormData((prev) => ({
               ...prev,
               address: data.display_name || "",
-              barangay: addr.suburb || addr.village || addr.neighbourhood || "",
+              barangay:
+                addr.suburb ||
+                addr.village ||
+                addr.neighbourhood ||
+                addr.quarter ||
+                addr.hamlet ||
+                addr.residential ||
+                "",
               city:
                 addr.city ||
                 addr.municipality ||
@@ -106,7 +114,7 @@ function LocationPicker({ position, setPosition, isEditing, setFormData }) {
                 "",
               province:
                 addr.state || addr.region || addr["state_district"] || "",
-              region: addr.region || addr.state || "",
+              region: prev.region,
               zip_code: addr.postcode || "",
               latitude: lat.toFixed(5),
               longitude: lng.toFixed(5),
@@ -130,7 +138,7 @@ export default function ProfilePage() {
     // Personal Info
     firstName: "",
     lastName: "",
-    middleInitial: "",
+    middle_initial: "",
     civil_status: "",
     age: "",
     title: "",
@@ -239,7 +247,13 @@ export default function ProfilePage() {
         ...prev,
         address: display_name || "",
         barangay:
-          address.suburb || address.village || address.neighbourhood || "",
+          address.suburb ||
+          address.village ||
+          address.neighbourhood ||
+          address.quarter ||
+          address.hamlet ||
+          address.residential ||
+          "",
         city:
           address.city ||
           address.municipality ||
@@ -265,10 +279,10 @@ export default function ProfilePage() {
     if (name === "weight" && value > 999) return;
     if (name === "age" && value > 150) return;
 
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       [name]: value,
-    });
+    }));
   };
 
   const handleSelectChange = (name, value) => {
@@ -300,6 +314,7 @@ export default function ProfilePage() {
         full_name: full_name || null,
         contact_number: formData.contact_number || null,
         address: formData.address || null,
+        barangay: formData.barangay || null,
         city: formData.city || null,
         province: formData.province || null,
         region: formData.region || null,
@@ -421,7 +436,8 @@ export default function ProfilePage() {
 
                 {user.role === "user" ? (
                   <CardTitle>
-                    {formData.title} {formData.firstName} {formData.lastName}
+                    {formData.title} {formData.firstName}{" "}
+                    {formData.middle_initial + "."} {formData.lastName}
                   </CardTitle>
                 ) : (
                   <CardTitle>
@@ -452,9 +468,11 @@ export default function ProfilePage() {
                     <span>{formData.contact_number}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">
-                      {formData.city}, {formData.province}
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1 min-w-0">
+                      {[formData.barangay, formData.city, formData.province]
+                        .filter(Boolean)
+                        .join(", ")}
                     </span>
                   </div>
 
@@ -493,7 +511,7 @@ export default function ProfilePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-4">
                   {/* PERSONAL NAME FIELDS */}
                   {user.role === "hospital" ? (
                     // For hospitals — show a single full name field
@@ -507,13 +525,46 @@ export default function ProfilePage() {
                     </div>
                   ) : (
                     // For donors/recipients/admin — show regular name fields
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-[100px_1.5fr_80px_1.5fr] gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="title">Title</Label>
+                        <Select
+                          value={formData.title}
+                          disabled={!isEditing}
+                          onValueChange={(value) =>
+                            handleSelectChange("title", value)
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select title (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Mr.">Mr.</SelectItem>
+                            <SelectItem value="Mrs.">Mrs.</SelectItem>
+                            <SelectItem value="Ms.">Ms.</SelectItem>
+                            <SelectItem value="Dr.">Dr.</SelectItem>
+                            <SelectItem value="Prof.">Prof.</SelectItem>
+                            <SelectItem value="Engr.">Engr.</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="space-y-2">
                         <Label htmlFor="firstName">First Name</Label>
                         <Input
                           id="firstName"
                           name="firstName"
                           value={formData.firstName}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="middle_initial">Middle Initial</Label>
+                        <Input
+                          id="middle_initial"
+                          name="middle_initial"
+                          value={formData.middle_initial}
                           onChange={handleChange}
                           disabled={!isEditing}
                         />
@@ -533,7 +584,7 @@ export default function ProfilePage() {
                   )}
                 </div>
 
-                <div className="grid md:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_0.8fr_1.5fr] gap-4">
                   {/* Phone: visible for all roles */}
                   <div className="space-y-2">
                     <Label htmlFor="contact_number">Phone Number</Label>
@@ -563,7 +614,7 @@ export default function ProfilePage() {
                             handleSelectChange("gender", value)
                           }
                         >
-                          <SelectTrigger className="w-48">
+                          <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select your gender" />
                           </SelectTrigger>
                           <SelectContent>
@@ -573,7 +624,7 @@ export default function ProfilePage() {
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="space-y-2 text-center">
                         <Label htmlFor="age">Age</Label>
                         <Input
                           id="age"
@@ -584,31 +635,6 @@ export default function ProfilePage() {
                           onChange={handleChange}
                           disabled={!isEditing}
                         />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="title" className="px-1">
-                          Title
-                        </Label>
-                        <Select
-                          value={formData.title}
-                          disabled={!isEditing}
-                          onValueChange={(value) =>
-                            handleSelectChange("title", value)
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select title (optional)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Mr.">Mr.</SelectItem>
-                            <SelectItem value="Mrs.">Mrs.</SelectItem>
-                            <SelectItem value="Ms.">Ms.</SelectItem>
-                            <SelectItem value="Dr.">Dr.</SelectItem>
-                            <SelectItem value="Prof.">Prof.</SelectItem>
-                            <SelectItem value="Engr.">Engr.</SelectItem>
-                          </SelectContent>
-                        </Select>
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -765,28 +791,6 @@ export default function ProfilePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="region">Region</Label>
-                  <Select
-                    value={formData.region}
-                    disabled={!isEditing}
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({ ...prev, region: value }))
-                    }
-                  >
-                    <SelectTrigger id="region">
-                      <SelectValue placeholder="Select Region" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="region">Select a Region</SelectItem>
-                      <SelectItem value="NCR">NCR</SelectItem>
-                      <SelectItem value="Region III">Region III</SelectItem>
-                      <SelectItem value="Region IV-A">Region IV-A</SelectItem>
-                      <SelectItem value="Region VI">Region VI</SelectItem>
-                      <SelectItem value="Region VII">Region VII</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 {/* Address Search */}
                 <div className="flex gap-2">
                   <Input
@@ -809,48 +813,83 @@ export default function ProfilePage() {
                     <Search className="h-4 w-4 mr-1" /> Search
                   </Button>
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
+                  <Label htmlFor="region">Region</Label>
+                  <Select
+                    value={formData.region}
+                    disabled={!isEditing}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, region: value }))
+                    }
+                  >
+                    <SelectTrigger id="region">
+                      <SelectValue placeholder="Select Region" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="region">Select a Region</SelectItem>
+                      <SelectItem value="NCR">NCR</SelectItem>
+                      <SelectItem value="Region III">Region III</SelectItem>
+                      <SelectItem value="Region IV-A">Region IV-A</SelectItem>
+                      <SelectItem value="Region VI">Region VI</SelectItem>
+                      <SelectItem value="Region VII">Region VII</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Full Address */}
+                <div className="space-y-2">
+                  <Label htmlFor="address">Full Address</Label>
                   <Input
                     id="address"
                     name="address"
                     value={formData.address}
-                    onChange={handleChange}
-                    disabled={!isEditing}
-                    placeholder="Click the map or type to update your full address"
+                    disabled
+                    placeholder="Auto-filled from search or map"
                   />
                 </div>
 
+                {/* Province → City → Barangay */}
                 <div className="grid md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="city">City</Label>
-                    <Input
-                      id="city"
-                      name="city"
-                      value={formData.city}
-                      onChange={handleChange}
-                      disabled={!isEditing}
-                    />
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="province">Province</Label>
                     <Input
                       id="province"
                       name="province"
                       value={formData.province}
-                      onChange={handleChange}
-                      disabled={!isEditing}
+                      disabled
                     />
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City / Municipality</Label>
+                    <Input
+                      id="city"
+                      name="city"
+                      value={formData.city}
+                      disabled
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="barangay">Barangay</Label>
+                    <Input
+                      id="barangay"
+                      name="barangay"
+                      value={formData.barangay || ""}
+                      disabled
+                    />
+                  </div>
+                </div>
+
+                {/* Zip Code */}
+                <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="zip_code">Zip Code</Label>
                     <Input
                       id="zip_code"
                       name="zip_code"
                       value={formData.zip_code}
-                      onChange={handleChange}
-                      disabled={!isEditing}
+                      disabled
                     />
                   </div>
                 </div>

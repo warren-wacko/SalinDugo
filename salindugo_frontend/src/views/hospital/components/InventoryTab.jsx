@@ -53,12 +53,6 @@ export default function InventoryTab({ accessToken }) {
   const [generatedPassword, setGeneratedPassword] = useState("");
   const [isSubmittingDonation, setIsSubmittingDonation] = useState(false);
 
-  // Calculate total units
-  const totalUnits = bloodStock.reduce(
-    (acc, curr) => acc + curr.units_available,
-    0,
-  );
-
   const capitalizeName = (name) => {
     return name
       .split(" ")
@@ -103,7 +97,18 @@ export default function InventoryTab({ accessToken }) {
       }
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load inventory");
+
+      const status = err.response?.status;
+
+      if (status === 429) {
+        toast.error("Too many requests. Please wait before trying again.");
+      } else if (status === 401) {
+        toast.error("Unauthorized. Please log in again.");
+      } else if (status === 500) {
+        toast.error("Server error. Try again later.");
+      } else {
+        toast.error("Failed to load inventory");
+      }
     } finally {
       setLoading(false);
     }
@@ -227,15 +232,6 @@ export default function InventoryTab({ accessToken }) {
     },
   };
 
-  const changeData = stockHistory.map((item, index) => {
-    if (index === 0) return { ...item, change: item.units };
-    const prev = stockHistory[index - 1];
-    return {
-      ...item,
-      change: item.units - prev.units,
-    };
-  });
-
   const bloodTypeColors = {
     "O+": "#f87171", // red
     "O-": "#fca5a5", // lighter red
@@ -245,6 +241,33 @@ export default function InventoryTab({ accessToken }) {
     "B-": "#6ee7b7", // lighter green
     "AB+": "#fbbf24", // yellow
     "AB-": "#fde68a", // lighter yellow
+  };
+
+  const getStockStatus = (units) => {
+    if (units <= 5) return "critical";
+    if (units < 10) return "low";
+    if (units >= 30) return "full";
+    return "safe";
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "critical":
+        return "bg-red-500 text-white";
+      case "low":
+        return "bg-orange-500 text-white";
+      case "full":
+        return "bg-green-600 text-white";
+      default:
+        return "bg-blue-500 text-white";
+    }
+  };
+
+  const statusLabels = {
+    low: "Low",
+    medium: "Moderate",
+    critical: "Critical",
+    safe: "Safe",
   };
 
   return (
@@ -439,9 +462,20 @@ export default function InventoryTab({ accessToken }) {
             >
               <CardContent className="p-4">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold">{stock.blood_type}</h3>
-                    <Badge className={getStatusColor(status)}>{status}</Badge>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold">{stock.blood_type}</h3>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        Blood Supply:
+                      </span>
+
+                      <Badge className={getStatusColor(status)}>
+                        {statusLabels[status]}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -731,23 +765,3 @@ export default function InventoryTab({ accessToken }) {
     </div>
   );
 }
-
-const getStockStatus = (units) => {
-  if (units === 0) return "critical";
-  if (units < 5) return "low";
-  if (units >= 20) return "full";
-  return "safe";
-};
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case "critical":
-      return "bg-red-500 text-white";
-    case "low":
-      return "bg-orange-500 text-white";
-    case "full":
-      return "bg-green-600 text-white";
-    default:
-      return "bg-blue-500 text-white";
-  }
-};
