@@ -5,13 +5,13 @@ const client = new BrevoClient({
   environment: BrevoEnvironment.Production,
 });
 
-export const sendEmail = async (to, subject, text) => {
+export const sendEmail = async (to, subject, html) => {
   try {
     const result = await client.transactionalEmails.sendTransacEmail({
       sender: { name: "SalinDugo", email: process.env.EMAIL_USER },
       to: [{ email: to }],
       subject,
-      textContent: text,
+      htmlContent: html,
     });
 
     console.log("Email sent:", result.messageId);

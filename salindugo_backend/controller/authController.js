@@ -5,7 +5,7 @@ import pool from "../db.js";
 import sendEmail from "../utils/email.js"; // NodeMailer helper
 import crypto from "crypto"; // Node.js built-in
 import { logAudit } from "../utils/auditLogger.js";
-
+import resetPasswordTemplate from "../utils/templates/resetPasswordTemplate.js";
 // =========================
 // Register User
 // =========================
@@ -337,14 +337,7 @@ export const forgotPassword = async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
-    await sendEmail(
-      email,
-      "Password Reset",
-      `
-      Click this link to reset your password: ${resetLink}
-      The link expires in 1 hour.
-    `,
-    );
+    await sendEmail(email, "Password Reset", resetPasswordTemplate(resetLink));
     await logAudit(
       userRes.rows[0].user_id,
       "request_password_reset",
