@@ -268,6 +268,7 @@ export default function InventoryTab({ accessToken }) {
     medium: "Moderate",
     critical: "Critical",
     safe: "Safe",
+    full: "Full",
   };
 
   return (

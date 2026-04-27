@@ -150,7 +150,10 @@ export default function DemandForecastingTab({ hospitalId }) {
   const [bloodTypeForecast, setBloodTypeForecast] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
+  const [mode, setMode] = useState("live"); // "live" | "backtest"
+  const [backtestData, setBacktestData] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [totals, setTotals] = useState(null);
   const toggleLevel = (level) => {
     setExpandedLevels((prev) => ({
       ...prev,
@@ -169,36 +172,79 @@ export default function DemandForecastingTab({ hospitalId }) {
         setLoading(true);
         setError(null);
 
-        const [historyRes, totalRes, detailRes, stockRes, flowRes] =
-          await Promise.all([
-            axios.get(
-              `${import.meta.env.VITE_API_URL}/api/history-total/${hospitalId}`,
-            ),
-            axios.get(
-              `${import.meta.env.VITE_API_URL}/api/forecast-total/${hospitalId}?days=30`,
-            ),
-            axios.get(
-              `${import.meta.env.VITE_API_URL}/api/forecast/${hospitalId}?days=30`,
-            ),
-            api.get(`/api/stocks`),
-            api.get(`/api/stocks/history`),
-          ]);
+        if (mode === "live") {
+          const [historyRes, totalRes, detailRes, stockRes, flowRes] =
+            await Promise.all([
+              api.get(`/api/history-total/${hospitalId}`),
+              api.get(`/api/forecast-total/${hospitalId}?days=30`),
+              api.get(`/api/forecast/${hospitalId}?days=30`),
+              api.get(`/api/stocks`),
+              api.get(`/api/stocks/history`),
+            ]);
 
-        setHistoryTotal(historyRes.data || []);
-        setTotalForecast(totalRes.data || []);
-        setBloodTypeForecast(detailRes.data || []);
-        setInventory(stockRes.data || []);
-        setInventoryFlow(flowRes.data.history || []);
+          setHistoryTotal(
+            Array.isArray(historyRes.data) ? historyRes.data : [],
+          );
+          setTotalForecast(Array.isArray(totalRes.data) ? totalRes.data : []);
+          setBloodTypeForecast(
+            Array.isArray(detailRes.data) ? detailRes.data : [],
+          );
+
+          setInventory(stockRes.data || []);
+          setInventoryFlow(flowRes.data.history || []);
+
+          // clear backtest
+          setBacktestData([]);
+          setMetrics(null);
+        }
+
+        if (mode === "backtest") {
+          const res = await api.get(`/api/backtest/${hospitalId}`);
+
+          console.log("RAW BACKTEST RESPONSE:", res.data);
+
+          setBacktestData(Array.isArray(res.data.data) ? res.data.data : []);
+          setMetrics(res.data.summary || null);
+          setTotals(res.data.totals || null);
+        }
       } catch (err) {
-        console.error("Forecast fetch error:", err);
-        setError("Failed to load forecast data");
+        console.error(err);
+        setError("Failed to load data");
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [hospitalId]);
+  }, [hospitalId, mode]);
+
+  const backtestGrouped = useMemo(() => {
+    if (!Array.isArray(backtestData) || !backtestData.length) return [];
+
+    const grouped = {};
+
+    backtestData.forEach((item) => {
+      const date = item.date;
+
+      if (!grouped[date]) {
+        grouped[date] = {
+          date,
+          actual: 0,
+          predicted: 0,
+        };
+      }
+
+      grouped[date].actual += Number(item.blood_requests_actual || 0);
+      grouped[date].predicted += Number(item.blood_requests_pred || 0);
+    });
+
+    // 🔥 IMPORTANT: sort by date
+    return Object.values(grouped).sort(
+      (a, b) => new Date(a.date) - new Date(b.date),
+    );
+  }, [backtestData]);
+
+  console.log("BACKTEST GROUPED:", backtestGrouped);
 
   // ===============================
   // GROUP BY DATE
@@ -430,156 +476,259 @@ export default function DemandForecastingTab({ hospitalId }) {
       </div>
 
       {/* KPI CARDS - TOP SECTION */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-        <KPICard
-          icon={TrendingUp}
-          title="30-Day Total Demand"
-          value={kpis?.totalDemand}
-          description="Total predicted units needed across all types"
-          accentColor="bg-blue-500"
-        />
-        <KPICard
-          icon={CheckCircle}
-          title="Available Inventory"
-          value={kpis?.totalStock}
-          description="Current units in stock"
-          accentColor="bg-green-500"
-        />
-        <KPICard
-          icon={AlertTriangle}
-          title="Peak Daily Demand"
-          value={kpis?.peakDemand}
-          description="Highest single-day forecast"
-          accentColor="bg-orange-500"
-        />
-        <KPICard
-          icon={AlertTriangle}
-          title="Stock Risk"
-          value={stockRisk?.risk}
-          description={
-            stockRisk
-              ? `Stockout in ${stockRisk.daysWithout} days (no donations)`
-              : ""
-          }
-          accentColor={
-            stockRisk?.risk === "HIGH"
-              ? "bg-red-500"
-              : stockRisk?.risk === "MEDIUM"
-                ? "bg-orange-500"
-                : "bg-green-500"
-          }
-        />
-      </div>
-
+      {mode === "live" && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+          <KPICard
+            icon={TrendingUp}
+            title="30-Day Total Demand"
+            value={kpis?.totalDemand}
+            description="Total predicted units needed across all types"
+            accentColor="bg-blue-500"
+          />
+          <KPICard
+            icon={CheckCircle}
+            title="Available Inventory"
+            value={kpis?.totalStock}
+            description="Current units in stock"
+            accentColor="bg-green-500"
+          />
+          <KPICard
+            icon={AlertTriangle}
+            title="Peak Daily Demand"
+            value={kpis?.peakDemand}
+            description="Highest single-day forecast"
+            accentColor="bg-orange-500"
+          />
+          <KPICard
+            icon={AlertTriangle}
+            title="Stock Risk"
+            value={stockRisk?.risk}
+            description={
+              stockRisk
+                ? `Stockout in ${stockRisk.daysWithout} days (no donations)`
+                : ""
+            }
+            accentColor={
+              stockRisk?.risk === "HIGH"
+                ? "bg-red-500"
+                : stockRisk?.risk === "MEDIUM"
+                  ? "bg-orange-500"
+                  : "bg-green-500"
+            }
+          />
+        </div>
+      )}
       {/* PRIMARY FORECAST SECTION */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-5 mt-5">
-        {/* MAIN TREND CHART */}
-        <div className="lg:col-span-2">
+      <div className="mb-6">
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setMode("live")}
+            className={`px-4 py-2 rounded ${mode === "live" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
+          >
+            Live Forecast
+          </button>
+
+          <button
+            onClick={() => setMode("backtest")}
+            className={`px-4 py-2 rounded ${mode === "backtest" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
+          >
+            Backtest (Validation)
+          </button>
+        </div>
+        {mode === "backtest" && (
           <ChartCardWithIcon
             icon={TrendingUp}
-            title="Total Demand Forecast"
-            description="30-day trend of total blood demand across all types"
-            accentColor="from-blue-500 to-cyan-500"
+            title="Backtest: Actual vs Predicted"
+            description="Model validation on unseen data"
+            accentColor="from-purple-500 to-indigo-500"
           >
             <ChartContainer config={chartConfig} className="h-72 w-full">
-              <AreaChart data={totalForecast}>
-                <defs>
-                  <linearGradient id="colorDemand" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor="hsl(217, 91%, 60%)"
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="hsl(217, 91%, 60%)"
-                      stopOpacity={0.1}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="date"
-                  className="text-xs"
-                  tickFormatter={(value) =>
-                    new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }
-                />
-                <YAxis className="text-xs" />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(value) =>
-                        new Date(value).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })
-                      }
-                    />
-                  }
-                />
-                <Area
-                  type="monotone"
-                  dataKey="total_predicted_demand"
-                  stroke="hsl(217, 91%, 60%)"
-                  fillOpacity={1}
-                  fill="url(#colorDemand)"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </AreaChart>
-            </ChartContainer>
-          </ChartCardWithIcon>
-        </div>
+              <LineChart data={backtestGrouped}>
+                <CartesianGrid strokeDasharray="3 3" />
 
-        {/* PEAK DEMAND & ACCELERATION */}
-        <div className="flex flex-col gap-6">
-          <ChartCardWithIcon
-            icon={Activity}
-            title="Demand Change"
-            description="Daily change in demand"
-            accentColor="from-orange-500 to-red-500"
-          >
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <BarChart data={accelerationData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="date"
-                  className="text-xs"
-                  tickFormatter={(value) =>
-                    new Intl.DateTimeFormat("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    }).format(new Date(value))
-                  }
+                <XAxis dataKey="date" />
+                <YAxis />
+
+                <ChartTooltip />
+
+                {/* ACTUAL */}
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  stroke="#22c55e"
+                  strokeWidth={2}
                 />
-                <YAxis className="text-xs" />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(value) =>
-                        new Date(value).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })
-                      }
-                    />
-                  }
+
+                {/* PREDICTED */}
+                <Line
+                  type="monotone"
+                  dataKey="predicted"
+                  stroke="#3b82f6"
+                  strokeDasharray="5 5"
+                  strokeWidth={2}
                 />
-                <Bar
-                  dataKey="change"
-                  fill="var(--color-change)"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
+              </LineChart>
             </ChartContainer>
+            {/* METRICS */}
+            {metrics && (
+              <div className="mt-4 text-sm">
+                RMSE (Model): <b>{metrics.RMSE_model}</b> | MAE (Model):{" "}
+                <b>{metrics.MAE_model}</b> | MAPE (Model):{" "}
+                <b>{metrics.MAPE_model}%</b>
+                <br />
+                RMSE (Baseline): <b>{metrics.RMSE_baseline}</b> | MAE
+                (Baseline): <b>{metrics.MAE_baseline}</b> | MAPE (Baseline):{" "}
+                <b>{metrics.MAPE_baseline}%</b>
+                {/* 🔥 NEW SECTION */}
+                {totals && (
+                  <>
+                    <hr className="my-2 opacity-30" />
+                    Total Actual: <b>{totals.actual_total}</b> | Predicted:{" "}
+                    <b>{totals.predicted_total}</b>
+                    <br />
+                    Difference:{" "}
+                    <b
+                      className={
+                        totals.difference > 0
+                          ? "text-blue-500"
+                          : totals.difference < 0
+                            ? "text-red-500"
+                            : ""
+                      }
+                    >
+                      {totals.difference > 0 ? "+" : ""}
+                      {totals.difference}
+                    </b>{" "}
+                    ({totals.percentage_error}%)
+                  </>
+                )}
+              </div>
+            )}
+            ,
           </ChartCardWithIcon>
-        </div>
+        )}
+        {/* MAIN TREND CHART */}
+        {mode === "live" && (
+          <div className="lg:col-span-2">
+            <ChartCardWithIcon
+              icon={TrendingUp}
+              title="Total Demand Forecast"
+              description="30-day trend of total blood demand across all types"
+              accentColor="from-blue-500 to-cyan-500"
+            >
+              <ChartContainer config={chartConfig} className="h-72 w-full">
+                <AreaChart data={totalForecast}>
+                  <defs>
+                    <linearGradient
+                      id="colorDemand"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor="hsl(217, 91%, 60%)"
+                        stopOpacity={0.8}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="hsl(217, 91%, 60%)"
+                        stopOpacity={0.1}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-muted"
+                  />
+                  <XAxis
+                    dataKey="date"
+                    className="text-xs"
+                    tickFormatter={(value) =>
+                      new Date(value).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })
+                    }
+                  />
+                  <YAxis className="text-xs" />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(value) =>
+                          new Date(value).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total_predicted_demand"
+                    stroke="hsl(217, 91%, 60%)"
+                    fillOpacity={1}
+                    fill="url(#colorDemand)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </AreaChart>
+              </ChartContainer>
+            </ChartCardWithIcon>
+          </div>
+        )}
+        {/* PEAK DEMAND & ACCELERATION */}
+        {mode === "live" && (
+          <div className="flex flex-col gap-6">
+            <ChartCardWithIcon
+              icon={Activity}
+              title="Demand Change"
+              description="Daily change in demand"
+              accentColor="from-orange-500 to-red-500"
+            >
+              <ChartContainer config={chartConfig} className="h-72 w-full">
+                <BarChart data={accelerationData}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-muted"
+                  />
+                  <XAxis
+                    dataKey="date"
+                    className="text-xs"
+                    tickFormatter={(value) =>
+                      new Intl.DateTimeFormat("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      }).format(new Date(value))
+                    }
+                  />
+                  <YAxis className="text-xs" />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(value) =>
+                          new Date(value).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <Bar
+                    dataKey="change"
+                    fill="var(--color-change)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
+            </ChartCardWithIcon>
+          </div>
+        )}
       </div>
 
       {/* PROJECTION & TRENDS SECTION */}

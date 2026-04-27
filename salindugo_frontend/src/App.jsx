@@ -10,6 +10,7 @@ import PublicRoute from "./routes/PublicRoutes";
 
 // Importing all the page components
 import HomePage from "./views/homepage/page";
+import ImportData from "./views/hospital/components/ImportPage";
 
 // Authentication Pages
 import LoginPage from "./views/authentication/login/page";
@@ -140,6 +141,14 @@ function App() {
           element={
             <PrivateRoute allowedRoles={["hospital"]}>
               <HospitalDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/import-data"
+          element={
+            <PrivateRoute allowedRoles={["hospital"]}>
+              <ImportData />
             </PrivateRoute>
           }
         />

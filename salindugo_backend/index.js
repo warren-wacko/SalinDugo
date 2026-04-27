@@ -6,6 +6,8 @@ import cors from "cors";
 import "./cron/reactivateDonors.js";
 import "./cron/expireBags.js";
 
+import { authenticateToken } from "./middleware/authMiddleware.js";
+
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import requestRoutes from "./routes/requestRoutes.js";
@@ -18,6 +20,7 @@ import inventoryRoutes from "./routes/inventoryRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
 import demandRoutes from "./routes/demandRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import importRoutes from "./routes/importRoutes.js";
 console.log("SERVER STARTED:", Date.now());
 import pool from "./db.js";
 const app = express();
@@ -39,6 +42,7 @@ app.use("/api/stocks", inventoryRoutes);
 app.use("/api/location", locationRoutes);
 app.use("/api/demand", demandRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/import", authenticateToken, importRoutes);
 
 app.get("/", (req, res) => {
   res.send("API is running...");
@@ -95,6 +99,20 @@ app.get("/api/forecast-map", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch map data" });
+  }
+});
+
+app.get("/api/backtest/:id", async (req, res) => {
+  try {
+    const response = await fetch(
+      `${process.env.ML_API_URL}/backtest/${req.params.id}`,
+    );
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Backtest error:", err);
+    res.status(500).json({ error: "Backtest failed" });
   }
 });
 

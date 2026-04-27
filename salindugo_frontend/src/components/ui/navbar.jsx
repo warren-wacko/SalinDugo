@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import api from "../../api/axios";
+import ImportData from "../../views/hospital/components/ImportPage";
 
 // ⏰ Helper: Format created_at nicely
 const formatDateTime = (dateString) => {
@@ -287,6 +288,9 @@ const Navbar = ({ setActiveTab }) => {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to="/change-password">Change Password</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/import-data">Import Data</Link>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
