@@ -135,41 +135,99 @@ router.post("/requests", upload.single("file"), async (req, res) => {
 
     if (!rows.length) throw new Error("Empty file");
 
+    console.log("START IMPORT:", rows.length);
+
     await client.query("BEGIN");
 
-    for (const row of rows) {
+    const values = [];
+    const placeholders = [];
+
+    let paramIndex = 1;
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      // =========================
+      // SAFE PARSING
+      // =========================
       const request_date = parseDate(row.request_date);
+
       const blood_type = String(row.blood_type || "")
         .trim()
         .toUpperCase();
-      const units_needed = Number(row.units_needed);
+
       const status = String(row.status || "fulfilled").toLowerCase();
 
+      // =========================
+      // STRICT units_needed FIX
+      // =========================
+      const raw_units = row.units_needed;
+
+      if (raw_units === undefined || raw_units === null) {
+        throw new Error(`Row ${i + 2}: Missing units_needed`);
+      }
+
+      const cleaned = String(raw_units).trim();
+
+      if (cleaned === "") {
+        throw new Error(`Row ${i + 2}: Empty units_needed`);
+      }
+
+      const units_needed = Number(cleaned);
+
+      // ✅ allow 0 for forecasting
+      if (!Number.isFinite(units_needed) || units_needed < 0) {
+        throw new Error(`Row ${i + 2}: Invalid units_needed (${raw_units})`);
+      }
+
+      // =========================
+      // VALIDATIONS
+      // =========================
       if (!VALID_TYPES.includes(blood_type)) {
-        throw new Error(`Invalid blood type: ${blood_type}`);
+        throw new Error(`Row ${i + 2}: Invalid blood type (${blood_type})`);
       }
 
       if (!VALID_STATUS.includes(status)) {
-        throw new Error(`Invalid status: ${status}`);
+        throw new Error(`Row ${i + 2}: Invalid status (${status})`);
       }
 
-      if (isNaN(units_needed)) {
-        throw new Error("Invalid units_needed");
-      }
+      // =========================
+      // BUILD BULK INSERT
+      // =========================
+      values.push(hospital_id, blood_type, units_needed, request_date, status);
 
-      await client.query(
-        `INSERT INTO requests 
-        (hospital_id, blood_type, units_needed, request_date, status)
-        VALUES ($1,$2,$3,$4,$5)`,
-        [hospital_id, blood_type, units_needed, request_date, status],
+      placeholders.push(
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4})`,
       );
+
+      paramIndex += 5;
     }
 
+    // =========================
+    // BULK INSERT (FAST)
+    // =========================
+    await client.query(
+      `INSERT INTO requests 
+       (hospital_id, blood_type, units_needed, request_date, status)
+       VALUES ${placeholders.join(",")}`,
+      values,
+    );
+
     await client.query("COMMIT");
-    res.json({ message: "Requests imported successfully" });
+
+    console.log("IMPORT DONE");
+
+    res.json({
+      message: "Requests imported successfully",
+      rows_inserted: rows.length,
+    });
   } catch (err) {
     await client.query("ROLLBACK");
-    res.status(400).json({ message: err.message });
+    console.error("IMPORT ERROR:", err.message);
+
+    res.status(400).json({
+      message: err.message,
+    });
   } finally {
     client.release();
   }
