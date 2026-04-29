@@ -44,7 +44,7 @@ const formatDateTime = (dateString) => {
   });
 };
 
-const Navbar = ({ setActiveTab }) => {
+const Navbar = ({ setActiveTab, hideSettings = false }) => {
   const { logout, user, accessToken } = useContext(AuthContext);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -125,9 +125,6 @@ const Navbar = ({ setActiveTab }) => {
               <Heart className="h-8 w-8 text-primary" />
               <h1 className="text-2xl font-bold text-foreground">SalinDugo</h1>
             </Link>
-            <Badge variant="secondary">{`${
-              user?.role || "User"
-            } Dashboard`}</Badge>
           </div>
 
           {/* Right-side controls */}
@@ -273,28 +270,30 @@ const Navbar = ({ setActiveTab }) => {
             </DropdownMenu>
 
             {/* ⚙ Settings */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Settings className="h-4 w-4" />
-                  <span className="ml-2 hidden sm:inline">Settings</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="start">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem asChild>
-                    <Link to="/profile">Profile</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/change-password">Change Password</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/import-data">Import Data</Link>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {!hideSettings && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <Settings className="h-4 w-4" />
+                    <span className="ml-2 hidden sm:inline">Settings</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="start">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile">Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/change-password">Change Password</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/import-data">Import Data</Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* 🚪 Logout */}
             <Button variant="ghost" size="sm" onClick={logout}>

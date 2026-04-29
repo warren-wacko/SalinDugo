@@ -190,8 +190,11 @@ export default function MedicalSystemMap() {
   ---------------------------- */
   if (loading && hospitals.length === 0) {
     return (
-      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Spinner className="mx-auto h-12 w-12" />
+      <div className="flex min-h-[620px] w-full items-center justify-center rounded-md border border-border bg-card">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Spinner className="h-6 w-6 text-primary" />
+          <span className="text-sm">Loading forecast map...</span>
+        </div>
       </div>
     );
   }
@@ -201,24 +204,26 @@ export default function MedicalSystemMap() {
     const IconComponent = config.icon;
 
     return (
-      <Card className="border-0 shadow-sm hover:shadow-md transition-all duration-300">
-        <CardContent className="p-6">
-          <div className="flex items-center gap-4">
+      <Card className="border-border bg-card shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
             <div
-              className="p-3 rounded-lg"
+              className="rounded-md border p-2.5"
               style={{ backgroundColor: `${config.color}15` }}
             >
               <IconComponent
-                className="w-6 h-6"
+                className="h-5 w-5"
                 style={{ color: config.color }}
               />
             </div>
             <div className="flex-1">
-              <p className="text-sm text-slate-600 font-medium">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {config.label}
               </p>
-              <p className="text-2xl font-bold text-slate-900">{count}</p>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="mt-1 text-2xl font-bold text-foreground">
+                {count}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {config.description}
               </p>
             </div>
@@ -229,32 +234,42 @@ export default function MedicalSystemMap() {
   };
 
   return (
-    <div className="w-full min-h-[700px] bg-slate-50 flex flex-col mt-5">
+    <div className="mt-5 flex min-h-[760px] w-full flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm">
       {/* Header */}
-      <div className="border-0 bg-gradient-to-br from-card/95 to-card/80 shadow-md transition-all hover:shadow-lg overflow-hidden">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-                <Activity className="w-8 h-8 text-red-600" />
-                Forecast Map
-              </h1>
-              <p className="text-slate-500 mt-1 text-sm">
-                Real-time demand forecast and inventory analysis
-              </p>
+      <div className="border-b border-border bg-background/70">
+        <div className="px-5 py-5">
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+                <Activity className="h-5 w-5" />
+              </div>
+              <div>
+                <Badge className="mb-2 bg-primary/10 text-primary hover:bg-primary/10">
+                  Regional Forecast View
+                </Badge>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  Forecast Map
+                </h1>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                  Real-time demand pressure and stock coverage by facility.
+                </p>
+              </div>
             </div>
             <Button
               onClick={fetchData}
               disabled={isRefreshing}
-              className="gap-2"
+              variant="outline"
+              className="gap-2 self-start"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw
+                className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <StatCard level="critical" count={stats.critical} />
             <StatCard level="warning" count={stats.warning} />
             <StatCard level="safe" count={stats.safe} />
@@ -263,20 +278,20 @@ export default function MedicalSystemMap() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 min-h-0 flex overflow-hidden gap-4 p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 bg-muted/25 p-4 xl:flex-row">
         {/* Sidebar */}
-        <div className="w-80 flex-shrink-0 bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+        <div className="flex min-h-[460px] flex-shrink-0 flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm xl:w-80">
           <Tabs defaultValue="search" className="w-full h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 border-0 rounded-none border-b border-slate-200 bg-slate-50 p-0 h-auto">
+            <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-border bg-muted/50 p-1">
               <TabsTrigger
                 value="search"
-                className="rounded-none py-3 text-xs font-medium"
+                className="rounded-md py-2.5 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 Search
               </TabsTrigger>
               <TabsTrigger
                 value="filter"
-                className="rounded-none py-3 text-xs font-medium"
+                className="rounded-md py-2.5 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 Filter
               </TabsTrigger>
@@ -286,7 +301,7 @@ export default function MedicalSystemMap() {
               value="search"
               className="flex-1 min-h-0 flex flex-col overflow-hidden p-0"
             >
-              <div className="p-4 border-b border-slate-100 flex-shrink-0">
+              <div className="flex-shrink-0 border-b border-border p-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
@@ -301,13 +316,13 @@ export default function MedicalSystemMap() {
 
               <ScrollArea className="flex-1 w-full [&>div]:!block [&>div]:w-full">
                 <div className="p-4 space-y-3 w-full">
-                  <p className="text-xs font-semibold text-slate-900 uppercase tracking-wider mb-3">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                     Facilities ({filteredHospitals.length})
                   </p>
 
                   {paginatedHospitals.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-sm text-slate-500">
+                    <div className="rounded-md border border-dashed border-border bg-muted/30 py-8 text-center">
+                      <p className="text-sm text-muted-foreground">
                         No facilities match your search
                       </p>
                     </div>
@@ -329,16 +344,16 @@ export default function MedicalSystemMap() {
                           key={h.hospital_id}
                           onMouseEnter={() => setHoveredHospital(h.hospital_id)}
                           onMouseLeave={() => setHoveredHospital(null)}
-                          className="w-full p-3 rounded-lg border border-slate-200 cursor-pointer hover:border-slate-300 hover:shadow-sm transition-all duration-200"
+                          className="w-full cursor-pointer rounded-md border border-border bg-background p-3 transition-colors hover:border-primary/30 hover:bg-primary/5"
                         >
                           <div className="flex items-start gap-2 mb-2 w-full">
-                            <p className="text-sm font-semibold text-slate-900 flex-1 min-w-0 truncate">
+                            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
                               {h.hospital_name}
                             </p>
 
                             <Badge
                               variant="outline"
-                              className="flex-shrink-0 whitespace-nowrap"
+                              className="flex-shrink-0 whitespace-nowrap bg-card"
                               style={{
                                 borderColor: config.color,
                                 color: config.color,
@@ -348,17 +363,17 @@ export default function MedicalSystemMap() {
                             </Badge>
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <p className="text-slate-500 font-medium">
+                            <div className="rounded-md bg-muted/45 px-2 py-2">
+                              <p className="font-medium text-muted-foreground">
                                 Stock
                               </p>
-                              <p className="text-slate-900 font-semibold">
+                              <p className="font-semibold text-foreground">
                                 {h.current_stock}
                               </p>
                             </div>
 
-                            <div>
-                              <p className="text-slate-500 font-medium">
+                            <div className="rounded-md bg-muted/45 px-2 py-2">
+                              <p className="font-medium text-muted-foreground">
                                 Days Cover
                               </p>
                               <p
@@ -427,8 +442,8 @@ export default function MedicalSystemMap() {
               value="filter"
               className="flex-1 flex flex-col overflow-hidden p-0"
             >
-              <div className="p-4 border-b border-slate-100 flex-shrink-0">
-                <p className="text-xs font-semibold text-slate-900 uppercase tracking-wider">
+              <div className="flex-shrink-0 border-b border-border p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Filter by Status
                 </p>
               </div>
@@ -453,10 +468,10 @@ export default function MedicalSystemMap() {
                     <button
                       key={option.value}
                       onClick={() => setSelectedRiskLevel(option.value)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-3 ${
+                      className={`flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                         isSelected
-                          ? "bg-blue-50 text-blue-700 border border-blue-200"
-                          : "text-slate-700 border border-slate-200 hover:bg-slate-50"
+                          ? "border-primary/25 bg-primary/10 text-primary"
+                          : "border-border text-foreground hover:bg-muted"
                       }`}
                     >
                       {option.config && (
@@ -467,7 +482,7 @@ export default function MedicalSystemMap() {
                       )}
                       {option.label}
                       {option.value !== "all" && (
-                        <span className="ml-auto text-xs text-slate-500 font-normal">
+                        <span className="ml-auto text-xs font-normal text-muted-foreground">
                           {option.value === "critical"
                             ? stats.critical
                             : option.value === "warning"
@@ -480,8 +495,8 @@ export default function MedicalSystemMap() {
                 })}
               </div>
 
-              <div className="p-4 border-t border-slate-100 flex-shrink-0">
-                <p className="text-xs font-semibold text-slate-900 uppercase tracking-wider mb-3">
+              <div className="flex-shrink-0 border-t border-border p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Legend
                 </p>
                 <div className="space-y-2.5">
@@ -499,10 +514,10 @@ export default function MedicalSystemMap() {
                           />
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-900">
+                          <p className="text-sm font-medium text-foreground">
                             {config.label}
                           </p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             {config.description}
                           </p>
                         </div>
@@ -516,16 +531,20 @@ export default function MedicalSystemMap() {
         </div>
 
         {/* MAP CONTAINER */}
-        <div className="flex-1 rounded-lg shadow-sm border border-slate-200 overflow-hidden relative">
+        <div className="relative min-h-[560px] flex-1 overflow-hidden rounded-md border border-border bg-card shadow-sm">
           {error ? (
-            <div className="w-full h-full flex items-center justify-center bg-slate-50">
-              <p>{error}</p>
+            <div className="flex h-full w-full items-center justify-center bg-destructive/5 p-8 text-center">
+              <div>
+                <AlertCircle className="mx-auto mb-3 h-8 w-8 text-destructive" />
+                <p className="font-medium text-destructive">{error}</p>
+              </div>
             </div>
           ) : (
             <MapContainer
               center={[14.5995, 120.9842]}
               zoom={6}
               style={{ height: "100%", width: "100%" }}
+              className="z-0"
             >
               <AutoZoom hospitals={filteredHospitals} />
 
@@ -558,19 +577,53 @@ export default function MedicalSystemMap() {
                       className: isCritical ? "pulse-marker" : "",
                     }}
                   >
-                    <Popup>
-                      <div className="min-w-max py-2">
-                        <h4 className="font-semibold mb-2">
+                    <Popup className="forecast-map-popup">
+                      <div className="min-w-52 py-1">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <h4 className="max-w-48 text-sm font-semibold text-foreground">
                           {h.hospital_name}
-                        </h4>
-                        <p>Current Stock: {h.current_stock}</p>
-                        <p>30-Day Demand: {h.total_predicted_demand}</p>
-                        <p>
-                          Days Cover:{" "}
-                          {h.days_cover == null
-                            ? "No forecasted demand"
-                            : `${h.days_cover} days`}
-                        </p>
+                          </h4>
+                          <Badge
+                            variant="outline"
+                            style={{
+                              borderColor: config.color,
+                              color: config.color,
+                            }}
+                          >
+                            {config.label}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-md bg-muted px-2 py-2">
+                            <p className="text-muted-foreground">
+                              Current Stock
+                            </p>
+                            <p className="font-semibold text-foreground">
+                              {h.current_stock}
+                            </p>
+                          </div>
+                          <div className="rounded-md bg-muted px-2 py-2">
+                            <p className="text-muted-foreground">
+                              30-Day Demand
+                            </p>
+                            <p className="font-semibold text-foreground">
+                              {h.total_predicted_demand}
+                            </p>
+                          </div>
+                          <div className="col-span-2 rounded-md bg-muted px-2 py-2">
+                            <p className="text-muted-foreground">
+                              Days Cover
+                            </p>
+                            <p
+                              className="font-semibold"
+                              style={{ color: config.color }}
+                            >
+                              {h.days_cover == null
+                                ? "No forecasted demand"
+                                : `${h.days_cover} days`}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </Popup>
                   </CircleMarker>

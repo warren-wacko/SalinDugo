@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from "react";
-import axios from "axios";
 import {
   BarChart,
   Bar,
@@ -10,7 +9,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  ResponsiveContainer,
   ComposedChart,
 } from "recharts";
 import {
@@ -27,15 +25,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   TrendingUp,
   Activity,
   Droplet,
   BarChart3,
-  LineChart as LineChartIcon,
   GitBranch,
   AlertTriangle,
   CheckCircle,
+  Loader2,
+  Radar,
+  ShieldAlert,
 } from "lucide-react";
 import ForecastMap from "./ForecastMap";
 import api from "../../../api/axios";
@@ -75,68 +76,58 @@ const chartConfig = {
   "O-": { label: "O-", color: "hsl(270, 61%, 50%)" },
 };
 
-function KPICard({ title, value, description, icon: Icon, accentColor }) {
+function KPICard({ title, value, description, icon: Icon, tone = "neutral" }) {
+  const toneStyles = {
+    neutral: "border-border bg-card text-foreground",
+    red: "border-primary/20 bg-primary/5 text-primary",
+    green: "border-green-200 bg-green-50 text-green-700",
+    amber: "border-yellow-200 bg-yellow-50 text-yellow-700",
+    slate: "border-border bg-background text-foreground",
+  };
+
   return (
-    <Card
-      className={`relative overflow-hidden bg-gradient-to-br from-card to-card/80 border transition-all hover:shadow-lg hover:border-primary/20`}
-    >
-      <div
-        className={`absolute top-0 right-0 w-20 h-20 rounded-full ${accentColor} opacity-10 -mr-10 -mt-10`}
-      ></div>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+    <Card className="overflow-hidden border-border bg-card shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {title}
           </CardTitle>
           {Icon && (
-            <div
-              className={`p-2 rounded-lg bg-${accentColor}/10 text-${accentColor}`}
-            >
-              <Icon className="w-4 h-4" />
+            <div className={`rounded-md border p-2 ${toneStyles[tone]}`}>
+              <Icon className="h-4 w-4" />
             </div>
           )}
         </div>
       </CardHeader>
       <CardContent>
-        <div className="text-4xl font-bold text-foreground">{value ?? "-"}</div>
+        <div className="text-3xl font-bold tracking-tight text-foreground">
+          {value ?? "-"}
+        </div>
         {description && (
-          <p className="text-xs text-muted-foreground mt-3">{description}</p>
+          <p className="mt-2 text-sm leading-5 text-muted-foreground">
+            {description}
+          </p>
         )}
       </CardContent>
     </Card>
   );
 }
 
-function ChartCardWithIcon({
-  icon: Icon,
-  title,
-  description,
-  accentColor,
-  children,
-}) {
+function ChartCardWithIcon({ icon: Icon, title, description, children }) {
   return (
-    <Card
-      className={`border-0 bg-gradient-to-br from-card/95 to-card/80 shadow-md transition-all hover:shadow-lg overflow-hidden`}
-    >
-      <div className={`h-1 ${accentColor}`}></div>
-      <CardHeader className="pb-4">
-        <div className="flex items-start gap-4">
-          <div
-            className={`p-3 rounded-xl bg-gradient-to-br ${accentColor} text-white shadow-sm`}
-          >
-            <Icon className="w-5 h-5" />
+    <Card className="overflow-hidden border-border bg-card shadow-sm">
+      <CardHeader className="border-b border-border bg-background/70 pb-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+            <Icon className="h-5 w-5" />
           </div>
-          <div className="flex-1">
-            <CardTitle className="text-lg font-bold text-foreground">
-              {title}
-            </CardTitle>
-            <CardDescription className="mt-1.5 text-xs">
-              {description}
-            </CardDescription>
+          <div className="min-w-0">
+            <CardTitle className="text-base">{title}</CardTitle>
+            <CardDescription className="mt-1">{description}</CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-2">{children}</CardContent>
+      <CardContent className="p-5">{children}</CardContent>
     </Card>
   );
 }
@@ -446,61 +437,160 @@ export default function DemandForecastingTab({ hospitalId }) {
     return grouped;
   }, [bloodTypeForecast, inventory]);
 
+  const forecastWindow = useMemo(() => {
+    if (mode === "backtest") return "Oct. 1 2024 - Oct. 31 2024";
+
+    if (!totalForecast.length) return "30-day horizon";
+
+    const firstDate = new Date(totalForecast[0].date).toLocaleDateString(
+      "en-US",
+      { month: "short", day: "numeric" },
+    );
+    const lastDate = new Date(
+      totalForecast[totalForecast.length - 1].date,
+    ).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+    return `${firstDate} - ${lastDate}`;
+  }, [mode, totalForecast]);
+
+  const highestRiskTypes = useMemo(() => {
+    if (!bloodRiskGroups) return [];
+    return [
+      ...(bloodRiskGroups.HIGH || []),
+      ...(bloodRiskGroups.MEDIUM || []),
+      ...(bloodRiskGroups.LOW || []),
+    ].slice(0, 4);
+  }, [bloodRiskGroups]);
+
+  const mostInDemandBloodType = useMemo(() => {
+    if (!bloodTypeForecast.length) return null;
+
+    const totalsByType = {};
+
+    bloodTypeForecast.forEach((item) => {
+      if (!totalsByType[item.blood_type]) totalsByType[item.blood_type] = 0;
+      totalsByType[item.blood_type] += Number(item.predicted_demand || 0);
+    });
+
+    const [bloodType, demand] =
+      Object.entries(totalsByType).sort((a, b) => b[1] - a[1])[0] || [];
+
+    if (!bloodType) return null;
+
+    return {
+      bloodType,
+      demand: demand.toFixed(1),
+    };
+  }, [bloodTypeForecast]);
+
+  const riskTone =
+    stockRisk?.risk === "HIGH"
+      ? "red"
+      : stockRisk?.risk === "MEDIUM"
+        ? "amber"
+        : "green";
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center w-full p-8">
-        <p className="text-muted-foreground">Loading forecast data...</p>
+      <div className="flex min-h-[520px] w-full items-center justify-center rounded-md border border-border bg-card">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <p>Loading forecast data...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center w-full p-8">
-        <p className="text-destructive">{error}</p>
+      <div className="flex min-h-[420px] w-full items-center justify-center rounded-md border border-destructive/25 bg-destructive/5 p-8">
+        <div className="text-center">
+          <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-destructive" />
+          <p className="font-medium text-destructive">{error}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Refresh the page or check the forecasting service connection.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-br from-background via-background to-background/95 p-8">
+    <div className="w-full space-y-6 bg-[linear-gradient(180deg,oklch(0.99_0_0)_0%,oklch(0.965_0.01_25)_100%)] p-4 sm:p-6 lg:p-8">
       {/* HEADER */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-foreground mb-2 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-          Demand Forecasting Dashboard
-        </h1>
-        <p className="text-base text-muted-foreground">
-          Comprehensive 30-day blood demand analysis with inventory projections
-          and trend insights
-        </p>
+      <div className="rounded-md border border-border bg-card px-5 py-5 shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+              <Radar className="h-6 w-6" />
+            </div>
+            <div>
+              <Badge className="mb-3 bg-primary/10 text-primary hover:bg-primary/10">
+                Forecast Window: {forecastWindow}
+              </Badge>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                Demand Forecasting
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Monitor 30-day blood demand, inventory runway, model validation,
+                and blood type risk from one operations view.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex rounded-md border border-border bg-background p-1">
+            <button
+              type="button"
+              onClick={() => setMode("live")}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                mode === "live"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              Live Forecast
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("backtest")}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                mode === "backtest"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              Backtest
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* KPI CARDS - TOP SECTION */}
       {mode === "live" && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KPICard
             icon={TrendingUp}
             title="30-Day Total Demand"
             value={kpis?.totalDemand}
             description="Total predicted units needed across all types"
-            accentColor="bg-blue-500"
+            tone="red"
           />
           <KPICard
             icon={CheckCircle}
             title="Available Inventory"
             value={kpis?.totalStock}
             description="Current units in stock"
-            accentColor="bg-green-500"
+            tone="green"
           />
           <KPICard
             icon={AlertTriangle}
             title="Peak Daily Demand"
             value={kpis?.peakDemand}
             description="Highest single-day forecast"
-            accentColor="bg-orange-500"
+            tone="amber"
           />
           <KPICard
-            icon={AlertTriangle}
+            icon={ShieldAlert}
             title="Stock Risk"
             value={stockRisk?.risk}
             description={
@@ -508,39 +598,17 @@ export default function DemandForecastingTab({ hospitalId }) {
                 ? `Stockout in ${stockRisk.daysWithout} days (no donations)`
                 : ""
             }
-            accentColor={
-              stockRisk?.risk === "HIGH"
-                ? "bg-red-500"
-                : stockRisk?.risk === "MEDIUM"
-                  ? "bg-orange-500"
-                  : "bg-green-500"
-            }
+            tone={riskTone}
           />
         </div>
       )}
       {/* PRIMARY FORECAST SECTION */}
-      <div className="mb-6">
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setMode("live")}
-            className={`px-4 py-2 rounded ${mode === "live" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
-          >
-            Live Forecast
-          </button>
-
-          <button
-            onClick={() => setMode("backtest")}
-            className={`px-4 py-2 rounded ${mode === "backtest" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
-          >
-            Backtest (Validation)
-          </button>
-        </div>
+      <div>
         {mode === "backtest" && (
           <ChartCardWithIcon
             icon={TrendingUp}
             title="Backtest: Actual vs Predicted"
             description="Model validation on unseen data"
-            accentColor="from-purple-500 to-indigo-500"
           >
             <ChartContainer config={chartConfig} className="h-72 w-full">
               <LineChart data={backtestGrouped}>
@@ -604,17 +672,15 @@ export default function DemandForecastingTab({ hospitalId }) {
                 )}
               </div>
             )}
-            ,
           </ChartCardWithIcon>
         )}
         {/* MAIN TREND CHART */}
         {mode === "live" && (
-          <div className="lg:col-span-2">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(22rem,0.8fr)]">
             <ChartCardWithIcon
               icon={TrendingUp}
               title="Total Demand Forecast"
               description="30-day trend of total blood demand across all types"
-              accentColor="from-blue-500 to-cyan-500"
             >
               <ChartContainer config={chartConfig} className="h-72 w-full">
                 <AreaChart data={totalForecast}>
@@ -678,16 +744,11 @@ export default function DemandForecastingTab({ hospitalId }) {
                 </AreaChart>
               </ChartContainer>
             </ChartCardWithIcon>
-          </div>
-        )}
-        {/* PEAK DEMAND & ACCELERATION */}
-        {mode === "live" && (
-          <div className="flex flex-col gap-6">
+
             <ChartCardWithIcon
               icon={Activity}
               title="Demand Change"
               description="Daily change in demand"
-              accentColor="from-orange-500 to-red-500"
             >
               <ChartContainer config={chartConfig} className="h-72 w-full">
                 <BarChart data={accelerationData}>
@@ -732,309 +793,318 @@ export default function DemandForecastingTab({ hospitalId }) {
       </div>
 
       {/* PROJECTION & TRENDS SECTION */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6 mb-5">
-        {/* BLOOD TYPE CONTRIBUTION */}
-        <ChartCardWithIcon
-          icon={Droplet}
-          title="Demand by Blood Type"
-          description="Trend of predicted demand across blood types"
-          accentColor="from-red-500 to-pink-500"
-        >
-          <ChartContainer config={chartConfig} className="h-72 w-full">
-            <LineChart data={groupedData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-
-              <XAxis
-                dataKey="date"
-                className="text-xs"
-                tickFormatter={(value) =>
-                  new Date(value).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                }
-              />
-
-              <YAxis className="text-xs" />
-
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) =>
-                      new Date(value).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
-                    }
-                  />
-                }
-              />
-
-              <ChartLegend
-                content={<ChartLegendContent />}
-                wrapperStyle={{ paddingTop: "16px" }}
-              />
-
-              {BLOOD_TYPES.map((bt) => (
-                <Line
-                  key={bt}
-                  type="monotone"
-                  dataKey={bt}
-                  stroke={chartConfig[bt].color}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              ))}
-            </LineChart>
-          </ChartContainer>
-        </ChartCardWithIcon>
-      </div>
-
-      {/* DISTRIBUTION SECTION */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* INVENTORY SIMULATION */}
-        <ChartCardWithIcon
-          icon={GitBranch}
-          title="Inventory Projection"
-          description="With and without continued donations over 30 days"
-          accentColor="from-green-500 to-emerald-500"
-        >
-          <ChartContainer config={chartConfig} className="h-72 w-full">
-            <ComposedChart data={trajectory}>
-              <defs>
-                <linearGradient id="colorWith" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="5%"
-                    stopColor="hsl(142, 71%, 45%)"
-                    stopOpacity={0.8}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor="hsl(142, 71%, 45%)"
-                    stopOpacity={0.1}
-                  />
-                </linearGradient>
-                <linearGradient id="colorWithout" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="5%"
-                    stopColor="hsl(0, 84%, 60%)"
-                    stopOpacity={0.8}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor="hsl(0, 84%, 60%)"
-                    stopOpacity={0.1}
-                  />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis
-                dataKey="date"
-                className="text-xs"
-                tickFormatter={(value) =>
-                  new Date(value).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                }
-              />
-              <YAxis className="text-xs" />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) =>
-                      new Date(value).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
-                    }
-                  />
-                }
-              />
-              <ChartLegend content={<ChartLegendContent />} />
-              <Area
-                type="monotone"
-                dataKey="with_donation"
-                fill="url(#colorWith)"
-                stroke="hsl(142, 71%, 45%)"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="no_donation"
-                fill="url(#colorWithout)"
-                stroke="hsl(0, 84%, 60%)"
-                strokeWidth={2}
-                dot={false}
-              />
-            </ComposedChart>
-          </ChartContainer>
-        </ChartCardWithIcon>
-
-        {/* INVENTORY FLOW */}
-        <ChartCardWithIcon
-          icon={BarChart3}
-          title="Inventory Flow Timeline"
-          description="Daily incoming and outgoing inventory movements"
-          accentColor="from-indigo-500 to-purple-500"
-        >
-          <ChartContainer config={chartConfig} className="h-72 w-full">
-            <BarChart data={flowChartData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis
-                dataKey="date"
-                className="text-xs"
-                tickFormatter={(value) =>
-                  new Date(value).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                }
-              />
-              <YAxis className="text-xs" />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) =>
-                      new Date(value).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
-                    }
-                  />
-                }
-              />
-              <ChartLegend content={<ChartLegendContent />} />
-              <Bar
-                dataKey="incoming"
-                fill="var(--color-incoming)"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey="outgoing"
-                fill="var(--color-outgoing)"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ChartContainer>
-        </ChartCardWithIcon>
-      </div>
-      <ChartCardWithIcon
-        icon={AlertTriangle}
-        title="Blood Type Risk Levels"
-        description="Forecast demand vs current inventory"
-        accentColor="from-red-500 to-orange-500"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {["HIGH", "MEDIUM", "LOW"].map((level) => {
-            const styles =
-              level === "HIGH"
-                ? {
-                    badge: "bg-red-500/15 text-red-500 border-red-500/30",
-                    border: "border-red-500/30",
-                    glow: "hover:shadow-red-500/20",
-                  }
-                : level === "MEDIUM"
-                  ? {
-                      badge:
-                        "bg-orange-500/15 text-orange-500 border-orange-500/30",
-                      border: "border-orange-500/30",
-                      glow: "hover:shadow-orange-500/20",
-                    }
-                  : {
-                      badge:
-                        "bg-green-500/15 text-green-500 border-green-500/30",
-                      border: "border-green-500/30",
-                      glow: "hover:shadow-green-500/20",
-                    };
-            const items = bloodRiskGroups?.[level] || [];
-            const isExpanded = expandedLevels[level];
-            const visibleItems = isExpanded ? items : items.slice(0, 3);
-            const hasMore = items.length > 3;
-
-            return (
-              <div
-                key={level}
-                className={`group rounded-xl border ${styles.border}
-            bg-muted/20 backdrop-blur-sm
-            p-4 flex flex-col min-h-[220px]
-            transition-all duration-300
-            hover:-translate-y-1 hover:shadow-lg ${styles.glow}`}
-              >
-                {/* HEADER */}
-                <div className="flex items-center justify-between mb-4">
-                  <span
-                    className={`text-[11px] tracking-wide font-bold px-3 py-1 rounded-full border ${styles.badge}`}
-                  >
-                    {level} RISK
-                  </span>
-
-                  <span className="text-xs text-muted-foreground">
-                    {bloodRiskGroups?.[level]?.length || 0} types
-                  </span>
+      {mode === "live" && (
+        <div className="grid grid-cols-1 gap-6">
+          {/* BLOOD TYPE CONTRIBUTION */}
+          <ChartCardWithIcon
+            icon={Droplet}
+            title="Demand by Blood Type"
+            description="Trend of predicted demand across blood types"
+          >
+            {mostInDemandBloodType && (
+              <div className="mb-4 flex flex-col gap-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                    Most in demand this month
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Highest total predicted demand across the forecast window.
+                  </p>
                 </div>
-
-                {/* CONTENT */}
-                {/* CONTENT */}
-                <div className="space-y-2 flex-1">
-                  {items.length ? (
-                    <>
-                      {visibleItems.map((bt) => (
-                        <div
-                          key={bt.blood_type}
-                          className="
-            flex items-center justify-between
-            px-3 py-2 rounded-lg
-            bg-background/60
-            border border-transparent
-            transition-all duration-200
-            group-hover:bg-background/80
-            hover:border-border hover:shadow-sm
-          "
-                        >
-                          <span className="text-sm font-semibold tracking-tight">
-                            {bt.blood_type}
-                          </span>
-
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {bt.daysCover} days
-                          </span>
-                        </div>
-                      ))}
-
-                      {hasMore && (
-                        <button
-                          onClick={() => toggleLevel(level)}
-                          className="
-            w-full text-xs font-medium
-            text-primary hover:text-primary/80
-            py-1 rounded-md transition-colors
-          "
-                        >
-                          {isExpanded
-                            ? "Show less"
-                            : `View ${items.length - 3} more`}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <p className="text-xs text-muted-foreground italic">
-                        No blood types in this category
-                      </p>
-                    </div>
-                  )}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/25 bg-background text-lg font-bold text-primary">
+                    {mostInDemandBloodType.bloodType}
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold tracking-tight text-foreground">
+                      {Math.round(mostInDemandBloodType.demand)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      predicted units
+                    </p>
+                  </div>
                 </div>
               </div>
-            );
-          })}
+            )}
+            <ChartContainer config={chartConfig} className="h-72 w-full">
+              <LineChart data={groupedData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+
+                <XAxis
+                  dataKey="date"
+                  className="text-xs"
+                  tickFormatter={(value) =>
+                    new Date(value).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  }
+                />
+
+                <YAxis className="text-xs" />
+
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })
+                      }
+                    />
+                  }
+                />
+
+                <ChartLegend
+                  content={<ChartLegendContent />}
+                  wrapperStyle={{ paddingTop: "16px" }}
+                />
+
+                {BLOOD_TYPES.map((bt) => (
+                  <Line
+                    key={bt}
+                    type="monotone"
+                    dataKey={bt}
+                    stroke={chartConfig[bt].color}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                ))}
+              </LineChart>
+            </ChartContainer>
+          </ChartCardWithIcon>
         </div>
-      </ChartCardWithIcon>
+      )}
+
+      {/* DISTRIBUTION SECTION */}
+      {mode === "live" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* INVENTORY SIMULATION */}
+          <ChartCardWithIcon
+            icon={GitBranch}
+            title="Inventory Projection"
+            description="With and without continued donations over 30 days"
+          >
+            <ChartContainer config={chartConfig} className="h-72 w-full">
+              <ComposedChart data={trajectory}>
+                <defs>
+                  <linearGradient id="colorWith" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor="hsl(142, 71%, 45%)"
+                      stopOpacity={0.8}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="hsl(142, 71%, 45%)"
+                      stopOpacity={0.1}
+                    />
+                  </linearGradient>
+                  <linearGradient id="colorWithout" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor="hsl(0, 84%, 60%)"
+                      stopOpacity={0.8}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="hsl(0, 84%, 60%)"
+                      stopOpacity={0.1}
+                    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  dataKey="date"
+                  className="text-xs"
+                  tickFormatter={(value) =>
+                    new Date(value).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  }
+                />
+                <YAxis className="text-xs" />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })
+                      }
+                    />
+                  }
+                />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="with_donation"
+                  fill="url(#colorWith)"
+                  stroke="hsl(142, 71%, 45%)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="no_donation"
+                  fill="url(#colorWithout)"
+                  stroke="hsl(0, 84%, 60%)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </ComposedChart>
+            </ChartContainer>
+          </ChartCardWithIcon>
+
+          {/* INVENTORY FLOW */}
+          <ChartCardWithIcon
+            icon={BarChart3}
+            title="Inventory Flow Timeline"
+            description="Daily incoming and outgoing inventory movements"
+          >
+            <ChartContainer config={chartConfig} className="h-72 w-full">
+              <BarChart data={flowChartData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  dataKey="date"
+                  className="text-xs"
+                  tickFormatter={(value) =>
+                    new Date(value).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  }
+                />
+                <YAxis className="text-xs" />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })
+                      }
+                    />
+                  }
+                />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Bar
+                  dataKey="incoming"
+                  fill="var(--color-incoming)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="outgoing"
+                  fill="var(--color-outgoing)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
+          </ChartCardWithIcon>
+        </div>
+      )}
+      {mode === "live" && (
+        <ChartCardWithIcon
+          icon={AlertTriangle}
+          title="Blood Type Risk Levels"
+          description="Forecast demand compared with current inventory coverage"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {["HIGH", "MEDIUM", "LOW"].map((level) => {
+              const styles =
+                level === "HIGH"
+                  ? {
+                      badge: "border-red-200 bg-red-50 text-red-700",
+                      border: "border-red-200",
+                    }
+                  : level === "MEDIUM"
+                    ? {
+                        badge: "border-yellow-200 bg-yellow-50 text-yellow-700",
+                        border: "border-yellow-200",
+                      }
+                    : {
+                        badge: "border-green-200 bg-green-50 text-green-700",
+                        border: "border-green-200",
+                      };
+              const items = bloodRiskGroups?.[level] || [];
+              const isExpanded = expandedLevels[level];
+              const visibleItems = isExpanded ? items : items.slice(0, 3);
+              const hasMore = items.length > 3;
+
+              return (
+                <div
+                  key={level}
+                  className={`flex min-h-[220px] flex-col rounded-md border bg-background p-4 ${styles.border}`}
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <span
+                      className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${styles.badge}`}
+                    >
+                      {level} Risk
+                    </span>
+
+                    <span className="text-xs text-muted-foreground">
+                      {items.length} types
+                    </span>
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    {items.length ? (
+                      <>
+                        {visibleItems.map((bt) => (
+                          <div
+                            key={bt.blood_type}
+                            className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                {bt.blood_type}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {bt.stock} units in stock
+                              </p>
+                            </div>
+
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {bt.daysCover} days
+                            </span>
+                          </div>
+                        ))}
+
+                        {hasMore && (
+                          <button
+                            type="button"
+                            onClick={() => toggleLevel(level)}
+                            className="w-full rounded-md py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+                          >
+                            {isExpanded
+                              ? "Show less"
+                              : `View ${items.length - 3} more`}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex h-full items-center justify-center rounded-md border border-dashed border-border bg-muted/30">
+                        <p className="text-xs text-muted-foreground">
+                          No blood types in this category
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </ChartCardWithIcon>
+      )}
 
       <ForecastMap />
     </div>
