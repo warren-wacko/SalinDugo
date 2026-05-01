@@ -131,22 +131,6 @@ const Navbar = ({ setActiveTab, hideSettings = false }) => {
           <div className="flex items-center gap-2">
             {/* 🔔 Notifications */}
             <DropdownMenu open={isNotifOpen} onOpenChange={setIsNotifOpen}>
-              <DropdownMenuTrigger asChild>
-                {user.role !== "admin" && (
-                  <Button variant="ghost" size="sm" className="relative">
-                    <Bell className="h-4 w-4" />
-                    {unreadCount > 0 && (
-                      <Badge
-                        variant="destructive"
-                        className="absolute -top-1 -right-1 h-4 w-4 rounded-full p-0 text-[10px]"
-                      >
-                        {unreadCount}
-                      </Badge>
-                    )}
-                  </Button>
-                )}
-              </DropdownMenuTrigger>
-
               <DropdownMenuContent className="w-80" align="end">
                 <DropdownMenuLabel className="font-semibold flex items-center justify-between">
                   <span>Notifications</span>

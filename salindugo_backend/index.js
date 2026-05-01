@@ -76,6 +76,26 @@ app.get("/api/history-total/:id", async (req, res) => {
   res.json(data);
 });
 
+app.get("/api/history/:id", async (req, res) => {
+  try {
+    const response = await fetch(
+      `${process.env.ML_API_URL}/history/${req.params.id}`,
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("ML ERROR:", text);
+      return res.status(500).json({ error: "ML error" });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("History fetch error:", err);
+    res.status(500).json({ error: "Failed to fetch history data" });
+  }
+});
+
 app.get("/api/forecast-total/:id", async (req, res) => {
   const response = await fetch(
     `${process.env.ML_API_URL}/forecast-total/${req.params.id}?days=30`,

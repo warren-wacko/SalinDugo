@@ -37,44 +37,20 @@ import {
   Loader2,
   Radar,
   ShieldAlert,
+  Calendar,
 } from "lucide-react";
-import ForecastMap from "./ForecastMap";
+import { ForecastTooltip } from "./tooltips/ForecastToolTip";
+import { BacktestTooltip } from "./tooltips/BackTestToolTip";
+import { chartConfig } from "./utils/chartconfig";
+import { useBloodTypeTrend } from "../hooks/useBloodTypeTrend";
+import BloodTypeTrendCard from "./DemandComponents/BloodTypeTrendCard";
+import { useDemandBudget } from "../hooks/useDemandBudget";
+import DemandBudgetCard from "./DemandComponents/DemandBudgetCard";
+import { useHighDemandStreak } from "../hooks/useHighDemandStreak";
+import HighDemandStreakAlert from "./DemandComponents/HighDemandStreakAlert";
 import api from "../../../api/axios";
+import BloodDropLoader from "../../../utils/bloodDropLoader";
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-const chartConfig = {
-  total_predicted_demand: {
-    label: "Total Demand: ",
-    color: "hsl(217, 91%, 60%)",
-  },
-  change: {
-    label: "Daily Change: ",
-    color: "hsl(25, 95%, 53%)",
-  },
-  incoming: {
-    label: "Incoming",
-    color: "hsl(142, 71%, 45%)",
-  },
-  outgoing: {
-    label: "Outgoing",
-    color: "hsl(0, 84%, 60%)",
-  },
-  no_donation: {
-    label: "Without Donations",
-    color: "hsl(0, 84%, 60%)",
-  },
-  with_donation: {
-    label: "With Donations",
-    color: "hsl(142, 71%, 45%)",
-  },
-  "A+": { label: "A+", color: "hsl(0, 84%, 60%)" },
-  "A-": { label: "A-", color: "hsl(15, 86%, 57%)" },
-  "B+": { label: "B+", color: "hsl(30, 80%, 55%)" },
-  "B-": { label: "B-", color: "hsl(45, 93%, 51%)" },
-  "AB+": { label: "AB+", color: "hsl(60, 70%, 50%)" },
-  "AB-": { label: "AB-", color: "hsl(120, 73%, 45%)" },
-  "O+": { label: "O+", color: "hsl(200, 83%, 53%)" },
-  "O-": { label: "O-", color: "hsl(270, 61%, 50%)" },
-};
 
 function KPICard({ title, value, description, icon: Icon, tone = "neutral" }) {
   const toneStyles = {
@@ -134,9 +110,7 @@ function ChartCardWithIcon({ icon: Icon, title, description, children }) {
 
 export default function DemandForecastingTab({ hospitalId }) {
   const [historyTotal, setHistoryTotal] = useState([]);
-  const [expandedLevels, setExpandedLevels] = useState({});
-  const [inventoryFlow, setInventoryFlow] = useState([]);
-  const [inventory, setInventory] = useState([]);
+  const [historyByType, setHistoryByType] = useState([]);
   const [totalForecast, setTotalForecast] = useState([]);
   const [bloodTypeForecast, setBloodTypeForecast] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -145,12 +119,14 @@ export default function DemandForecastingTab({ hospitalId }) {
   const [backtestData, setBacktestData] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [totals, setTotals] = useState(null);
-  const toggleLevel = (level) => {
-    setExpandedLevels((prev) => ({
-      ...prev,
-      [level]: !prev[level],
-    }));
-  };
+  const [bloodTypeMetrics, setBloodTypeMetrics] = useState([]);
+  const [selectedBacktestBloodType, setSelectedBacktestBloodType] =
+    useState("ALL");
+  const [selectedForecastBloodType, setSelectedForecastBloodType] =
+    useState("A+");
+  const [selectedCI, setSelectedCI] = useState("both");
+  const [selectedBacktestCI, setSelectedBacktestCI] = useState("both");
+  const [selectedBloodTypeCI, setSelectedBloodTypeCI] = useState("both");
 
   // ===============================
   // FETCH DATA
@@ -164,16 +140,18 @@ export default function DemandForecastingTab({ hospitalId }) {
         setError(null);
 
         if (mode === "live") {
-          const [historyRes, totalRes, detailRes, stockRes, flowRes] =
+          const [historyTotalRes, historyRes, totalRes, detailRes] =
             await Promise.all([
-              api.get(`/api/history-total/${hospitalId}`),
+              api.get(`/api/history-total/${hospitalId}`), // KEEP
+              api.get(`/api/history/${hospitalId}`), // ADD
               api.get(`/api/forecast-total/${hospitalId}?days=30`),
               api.get(`/api/forecast/${hospitalId}?days=30`),
-              api.get(`/api/stocks`),
-              api.get(`/api/stocks/history`),
             ]);
 
           setHistoryTotal(
+            Array.isArray(historyTotalRes.data) ? historyTotalRes.data : [],
+          );
+          setHistoryByType(
             Array.isArray(historyRes.data) ? historyRes.data : [],
           );
           setTotalForecast(Array.isArray(totalRes.data) ? totalRes.data : []);
@@ -181,12 +159,13 @@ export default function DemandForecastingTab({ hospitalId }) {
             Array.isArray(detailRes.data) ? detailRes.data : [],
           );
 
-          setInventory(stockRes.data || []);
-          setInventoryFlow(flowRes.data.history || []);
-
           // clear backtest
           setBacktestData([]);
           setMetrics(null);
+          setTotals(null);
+          setBloodTypeMetrics([]);
+          setSelectedBacktestBloodType("ALL");
+          setSelectedForecastBloodType("A+");
         }
 
         if (mode === "backtest") {
@@ -197,6 +176,11 @@ export default function DemandForecastingTab({ hospitalId }) {
           setBacktestData(Array.isArray(res.data.data) ? res.data.data : []);
           setMetrics(res.data.summary || null);
           setTotals(res.data.totals || null);
+          const summaries = Array.isArray(res.data.blood_type_summary)
+            ? res.data.blood_type_summary
+            : [];
+          setBloodTypeMetrics(summaries);
+          setSelectedBacktestBloodType(summaries[0]?.blood_type || "A+");
         }
       } catch (err) {
         console.error(err);
@@ -209,8 +193,23 @@ export default function DemandForecastingTab({ hospitalId }) {
     fetchData();
   }, [hospitalId, mode]);
 
+  const { demandBudget30Days, rankedBudget } = useDemandBudget(
+    bloodTypeForecast,
+    BLOOD_TYPES,
+  );
+
+  const selectedBacktestMetrics = useMemo(() => {
+    return (
+      bloodTypeMetrics.find(
+        (item) => item.blood_type === selectedBacktestBloodType,
+      ) || null
+    );
+  }, [bloodTypeMetrics, selectedBacktestBloodType]);
+
   const backtestGrouped = useMemo(() => {
-    if (!Array.isArray(backtestData) || !backtestData.length) return [];
+    if (!Array.isArray(backtestData) || !backtestData.length) {
+      return [];
+    }
 
     const grouped = {};
 
@@ -222,11 +221,26 @@ export default function DemandForecastingTab({ hospitalId }) {
           date,
           actual: 0,
           predicted: 0,
+
+          ci_80_lower: 0,
+          ci_80_upper: 0,
+
+          ci_95_lower: 0,
+          ci_95_upper: 0,
         };
       }
 
       grouped[date].actual += Number(item.blood_requests_actual || 0);
       grouped[date].predicted += Number(item.blood_requests_pred || 0);
+
+      const ci80 = item.ci_80 || [0, 0];
+      const ci95 = item.ci_95 || [0, 0];
+
+      grouped[date].ci_80_lower += Number(ci80[0] || 0);
+      grouped[date].ci_80_upper += Number(ci80[1] || 0);
+
+      grouped[date].ci_95_lower += Number(ci95[0] || 0);
+      grouped[date].ci_95_upper += Number(ci95[1] || 0);
     });
 
     // 🔥 IMPORTANT: sort by date
@@ -234,6 +248,28 @@ export default function DemandForecastingTab({ hospitalId }) {
       (a, b) => new Date(a.date) - new Date(b.date),
     );
   }, [backtestData]);
+
+  const bloodTypeBacktestGrouped = useMemo(() => {
+    if (!Array.isArray(backtestData) || !backtestData.length) return [];
+
+    return backtestData
+      .filter((item) => item.blood_type === selectedBacktestBloodType)
+      .map((item) => ({
+        date: item.date,
+        actual: Number(item.blood_requests_actual || 0),
+        predicted: Number(item.blood_requests_pred || 0),
+        ci_80_lower: Math.max(0, Number(item.ci_80?.[0] || 0)),
+        ci_80_upper: Number(item.ci_80?.[1] || 0),
+        ci_95_lower: Math.max(0, Number(item.ci_95?.[0] || 0)),
+        ci_95_upper: Number(item.ci_95?.[1] || 0),
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [backtestData, selectedBacktestBloodType]);
+
+  const formatMetric = (value, suffix = "") =>
+    value === null || value === undefined || Number.isNaN(Number(value))
+      ? "-"
+      : `${value}${suffix}`;
 
   console.log("BACKTEST GROUPED:", backtestGrouped);
 
@@ -252,6 +288,52 @@ export default function DemandForecastingTab({ hospitalId }) {
     );
   }, [bloodTypeForecast]);
 
+  const forecastIntervalData = useMemo(() => {
+    if (!bloodTypeForecast.length) return [];
+
+    return bloodTypeForecast
+      .filter((item) => item.blood_type === selectedForecastBloodType)
+      .map((item) => {
+        const lower80Raw = Number(item.ci_80?.[0]);
+        const upper80 = Number(item.ci_80?.[1]);
+        const lower80 = Number.isFinite(lower80Raw)
+          ? Math.max(0, lower80Raw)
+          : 0;
+
+        const lower95Raw = Number(item.ci_95?.[0]);
+        const upper95 = Number(item.ci_95?.[1]);
+        const lower95 = Number.isFinite(lower95Raw)
+          ? Math.max(0, lower95Raw)
+          : 0;
+
+        return {
+          date: item.date,
+          prediction: Number(item.prediction ?? 0),
+
+          ci_80_lower: lower80,
+          ci_80_upper: Number.isFinite(upper80) ? upper80 : 0,
+          ci_80_range: Number.isFinite(upper80) ? upper80 - lower80 : 0,
+
+          ci_95_lower: lower95,
+          ci_95_upper: Number.isFinite(upper95) ? upper95 : 0,
+          ci_95_range: Number.isFinite(upper95) ? upper95 - lower95 : 0,
+        };
+      })
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [bloodTypeForecast, selectedForecastBloodType]);
+
+  const hasForecastIntervals = useMemo(() => {
+    return forecastIntervalData.some(
+      (item) =>
+        item.ci_80_lower != null &&
+        item.ci_80_upper != null &&
+        item.ci_95_lower != null &&
+        item.ci_95_upper != null,
+    );
+  }, [forecastIntervalData]);
+
+  console.log("forecast interval:", forecastIntervalData);
+
   // ===============================
   // DEMAND ACCELERATION
   // ===============================
@@ -267,36 +349,13 @@ export default function DemandForecastingTab({ hospitalId }) {
   }, [totalForecast]);
 
   // ===============================
-  // INVENTORY FLOW
-  // ===============================
-  const flowChartData = useMemo(() => {
-    const grouped = {};
-
-    inventoryFlow.forEach((item) => {
-      const date = new Date(item.changed_at).toISOString().split("T")[0];
-
-      if (!grouped[date]) grouped[date] = { date, incoming: 0, outgoing: 0 };
-
-      if (item.change > 0) grouped[date].incoming += item.change;
-      else grouped[date].outgoing += Math.abs(item.change);
-    });
-
-    return Object.values(grouped);
-  }, [inventoryFlow]);
-
-  // ===============================
   // KPI SUMMARY
   // ===============================
   const kpis = useMemo(() => {
-    if (!totalForecast.length || !inventory.length) return null;
+    if (!totalForecast.length) return null;
 
     const totalDemand = totalForecast.reduce(
       (s, d) => s + Number(d.total_predicted_demand || 0),
-      0,
-    );
-
-    const totalStock = inventory.reduce(
-      (s, i) => s + Number(i.units_available || 0),
       0,
     );
 
@@ -306,139 +365,12 @@ export default function DemandForecastingTab({ hospitalId }) {
 
     return {
       totalDemand: totalDemand.toFixed(1),
-      totalStock,
       peakDemand: peakDemand.toFixed(1),
     };
-  }, [totalForecast, inventory]);
-
-  // ===============================
-  // INVENTORY TRAJECTORY
-  // ===============================
-  const avgDailyIncoming = useMemo(() => {
-    if (!inventoryFlow.length) return 0;
-
-    const grouped = {};
-    inventoryFlow.forEach((i) => {
-      const date = new Date(i.changed_at).toISOString().split("T")[0];
-      if (!grouped[date]) grouped[date] = 0;
-      if (i.change > 0) grouped[date] += i.change;
-    });
-
-    const days = Object.keys(grouped).length;
-    if (!days) return 0;
-
-    return Object.values(grouped).reduce((s, v) => s + v, 0) / days;
-  }, [inventoryFlow]);
-
-  const trajectory = useMemo(() => {
-    if (!totalForecast.length || !inventory.length) return [];
-
-    let stock = inventory.reduce(
-      (s, i) => s + Number(i.units_available || 0),
-      0,
-    );
-
-    let stockWith = stock;
-
-    return totalForecast.map((d) => {
-      stock = Math.max(0, stock - d.total_predicted_demand);
-
-      stockWith = Math.max(
-        0,
-        stockWith - d.total_predicted_demand + avgDailyIncoming,
-      );
-
-      return {
-        date: d.date,
-        no_donation: stock,
-        with_donation: stockWith,
-      };
-    });
-  }, [totalForecast, inventory, avgDailyIncoming]);
-
-  // ===============================
-  // STOCK RISK ANALYSIS
-  // ===============================
-  const stockRisk = useMemo(() => {
-    if (!trajectory.length) return null;
-
-    // when stock hits zero (WITHOUT donations)
-    const stockoutIndex = trajectory.findIndex((d) => d.no_donation <= 0);
-
-    // when stock hits zero (WITH donations)
-    const stockoutWithIndex = trajectory.findIndex((d) => d.with_donation <= 0);
-
-    const daysWithout =
-      stockoutIndex === -1 ? "Safe (30d+)" : stockoutIndex + 1;
-
-    const daysWith =
-      stockoutWithIndex === -1 ? "Safe (30d+)" : stockoutWithIndex + 1;
-
-    // risk level logic
-    let risk = "LOW";
-    if (stockoutIndex !== -1 && stockoutIndex <= 3) risk = "HIGH";
-    else if (stockoutIndex !== -1 && stockoutIndex <= 7) risk = "MEDIUM";
-
-    return {
-      daysWithout,
-      daysWith,
-      risk,
-      stockoutDate:
-        stockoutIndex !== -1 ? trajectory[stockoutIndex].date : null,
-    };
-  }, [trajectory]);
-
-  // ===============================
-  // BLOOD TYPE PRIORITY (GROUPED)
-  // ===============================
-  const bloodRiskGroups = useMemo(() => {
-    if (!bloodTypeForecast.length || !inventory.length) return null;
-
-    const demandMap = {};
-
-    // total demand per blood type (30 days)
-    bloodTypeForecast.forEach((d) => {
-      if (!demandMap[d.blood_type]) demandMap[d.blood_type] = 0;
-      demandMap[d.blood_type] += Number(d.predicted_demand || 0);
-    });
-
-    // stock lookup
-    const stockMap = {};
-    inventory.forEach((i) => {
-      stockMap[i.blood_type] = Number(i.units_available || 0);
-    });
-
-    const grouped = {
-      HIGH: [],
-      MEDIUM: [],
-      LOW: [],
-    };
-
-    Object.keys(demandMap).forEach((bt) => {
-      const demand = demandMap[bt];
-      const stock = stockMap[bt] ?? 0;
-
-      // days of supply logic
-      const avgDaily = demand / 30;
-      const daysCover = avgDaily > 0 ? stock / avgDaily : 999;
-
-      const row = {
-        blood_type: bt,
-        demand: demand.toFixed(1),
-        stock,
-        daysCover: daysCover.toFixed(1),
-      };
-
-      if (daysCover <= 3) grouped.HIGH.push(row);
-      else if (daysCover <= 7) grouped.MEDIUM.push(row);
-      else grouped.LOW.push(row);
-    });
-
-    return grouped;
-  }, [bloodTypeForecast, inventory]);
+  }, [totalForecast]);
 
   const forecastWindow = useMemo(() => {
-    if (mode === "backtest") return "Oct. 1 2024 - Oct. 31 2024";
+    if (mode === "backtest") return "Oct. 1 2025 - Oct. 31 2025";
 
     if (!totalForecast.length) return "30-day horizon";
 
@@ -452,15 +384,6 @@ export default function DemandForecastingTab({ hospitalId }) {
 
     return `${firstDate} - ${lastDate}`;
   }, [mode, totalForecast]);
-
-  const highestRiskTypes = useMemo(() => {
-    if (!bloodRiskGroups) return [];
-    return [
-      ...(bloodRiskGroups.HIGH || []),
-      ...(bloodRiskGroups.MEDIUM || []),
-      ...(bloodRiskGroups.LOW || []),
-    ].slice(0, 4);
-  }, [bloodRiskGroups]);
 
   const mostInDemandBloodType = useMemo(() => {
     if (!bloodTypeForecast.length) return null;
@@ -483,23 +406,189 @@ export default function DemandForecastingTab({ hospitalId }) {
     };
   }, [bloodTypeForecast]);
 
-  const riskTone =
-    stockRisk?.risk === "HIGH"
-      ? "red"
-      : stockRisk?.risk === "MEDIUM"
-        ? "amber"
-        : "green";
+  const topBloodType7 = useMemo(() => {
+    if (!bloodTypeForecast.length) return null;
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[520px] w-full items-center justify-center rounded-md border border-border bg-card">
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <p>Loading forecast data...</p>
-        </div>
-      </div>
+    const grouped = {};
+
+    // group by blood type
+    bloodTypeForecast.forEach((item) => {
+      if (!grouped[item.blood_type]) {
+        grouped[item.blood_type] = [];
+      }
+
+      grouped[item.blood_type].push({
+        date: item.date,
+        value: Number(item.predicted_demand || 0),
+      });
+    });
+
+    let best = null;
+
+    Object.entries(grouped).forEach(([bt, arr]) => {
+      const total7 = arr
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 7)
+        .reduce((sum, d) => sum + d.value, 0);
+
+      if (!best || total7 > best.value) {
+        best = { bloodType: bt, value: total7 };
+      }
+    });
+
+    return best;
+  }, [bloodTypeForecast]);
+  console.log("history:", historyTotal);
+
+  const last7DayActual = useMemo(() => {
+    if (!historyByType.length) return {};
+
+    const grouped = {};
+
+    historyByType.forEach((item) => {
+      if (!grouped[item.blood_type]) {
+        grouped[item.blood_type] = [];
+      }
+
+      grouped[item.blood_type].push(Number(item.blood_requests || 0));
+    });
+
+    const result = {};
+
+    Object.keys(grouped).forEach((bt) => {
+      const last7 = grouped[bt].slice(-7);
+      const avg = last7.reduce((s, v) => s + v, 0) / (last7.length || 1);
+
+      result[bt] = avg;
+    });
+
+    return result;
+  }, [historyByType]);
+
+  const next7DayForecast = useMemo(() => {
+    if (!bloodTypeForecast.length) return {};
+
+    const grouped = {};
+
+    bloodTypeForecast.forEach((item) => {
+      if (!grouped[item.blood_type]) {
+        grouped[item.blood_type] = [];
+      }
+
+      grouped[item.blood_type].push({
+        date: item.date,
+        value: Number(item.predicted_demand || 0),
+      });
+    });
+
+    const result = {};
+
+    Object.keys(grouped).forEach((bt) => {
+      const first7 = grouped[bt]
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 7);
+
+      const avg =
+        first7.reduce((s, d) => s + d.value, 0) / (first7.length || 1);
+
+      result[bt] = avg;
+    });
+
+    return result;
+  }, [bloodTypeForecast]);
+
+  const trendByBloodType = useBloodTypeTrend({
+    historyByType,
+    bloodTypeForecast,
+    BLOOD_TYPES,
+  });
+
+  const streaks = useHighDemandStreak({
+    bloodTypeForecast,
+    historyByType,
+  });
+
+  const forecastTotal = useMemo(() => {
+    if (!totalForecast.length) return null;
+
+    return totalForecast.reduce(
+      (sum, d) => sum + Number(d.total_predicted_demand || 0),
+      0,
     );
-  }
+  }, [totalForecast]);
+
+  const lastYearTotal = useMemo(() => {
+    if (!historyTotal.length || !totalForecast.length) return null;
+
+    // get forecast date range
+    const dates = totalForecast.map((d) => new Date(d.date));
+    const start = new Date(dates[0]);
+    const end = new Date(dates[dates.length - 1]);
+
+    // shift 1 year back
+    const startLastYear = new Date(start);
+    startLastYear.setFullYear(start.getFullYear() - 1);
+
+    const endLastYear = new Date(end);
+    endLastYear.setFullYear(end.getFullYear() - 1);
+
+    // filter history
+    const filtered = historyTotal.filter((d) => {
+      const date = new Date(d.date);
+      return date >= startLastYear && date <= endLastYear;
+    });
+
+    if (!filtered.length) return null;
+
+    return filtered.reduce((sum, d) => sum + Number(d.blood_requests || 0), 0);
+  }, [historyTotal, totalForecast]);
+
+  const yoyChange = useMemo(() => {
+    if (!forecastTotal || !lastYearTotal) return null;
+
+    if (lastYearTotal === 0) return null;
+
+    return ((forecastTotal - lastYearTotal) / lastYearTotal) * 100;
+  }, [forecastTotal, lastYearTotal]);
+
+  const formatRange = (start, end) => {
+    const s = new Date(start).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    const e = new Date(end).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    return `${s} – ${e}`;
+  };
+
+  const yoyDisplay = useMemo(() => {
+    if (yoyChange === null || forecastTotal == null || lastYearTotal == null)
+      return null;
+
+    const current = Math.round(forecastTotal);
+    const previous = Math.round(lastYearTotal);
+
+    // ✅ FIX: compute range here
+    const range =
+      totalForecast.length > 0
+        ? formatRange(
+            totalForecast[0].date,
+            totalForecast[totalForecast.length - 1].date,
+          )
+        : null;
+
+    return {
+      value: `${yoyChange > 0 ? "+" : ""}${yoyChange.toFixed(1)}%`,
+      trend:
+        yoyChange > 5 ? "Increasing" : yoyChange < -5 ? "Decreasing" : "Stable",
+      tone: yoyChange > 5 ? "red" : yoyChange < -5 ? "green" : "slate",
+
+      comparison: `${previous} → ${current} units`,
+      range, // ✅ now defined
+    };
+  }, [yoyChange, forecastTotal, lastYearTotal, totalForecast]);
 
   if (error) {
     return (
@@ -511,6 +600,14 @@ export default function DemandForecastingTab({ hospitalId }) {
             Refresh the page or check the forecasting service connection.
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[420px] w-full items-center justify-center">
+        <BloodDropLoader />
       </div>
     );
   }
@@ -567,20 +664,13 @@ export default function DemandForecastingTab({ hospitalId }) {
 
       {/* KPI CARDS - TOP SECTION */}
       {mode === "live" && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <KPICard
             icon={TrendingUp}
             title="30-Day Total Demand"
             value={kpis?.totalDemand}
             description="Total predicted units needed across all types"
             tone="red"
-          />
-          <KPICard
-            icon={CheckCircle}
-            title="Available Inventory"
-            value={kpis?.totalStock}
-            description="Current units in stock"
-            tone="green"
           />
           <KPICard
             icon={AlertTriangle}
@@ -590,89 +680,617 @@ export default function DemandForecastingTab({ hospitalId }) {
             tone="amber"
           />
           <KPICard
-            icon={ShieldAlert}
-            title="Stock Risk"
-            value={stockRisk?.risk}
+            icon={Droplet}
+            title="Top Blood Type (30 Days)"
+            value={mostInDemandBloodType?.bloodType || "-"}
             description={
-              stockRisk
-                ? `Stockout in ${stockRisk.daysWithout} days (no donations)`
-                : ""
+              mostInDemandBloodType
+                ? `${Math.round(mostInDemandBloodType.demand)} units expected`
+                : "No data"
             }
-            tone={riskTone}
+            tone="red"
+          />
+          <KPICard
+            icon={AlertTriangle}
+            title="Top Blood Type (7 Days)"
+            value={topBloodType7?.bloodType || "-"}
+            description={
+              topBloodType7
+                ? `${Math.round(topBloodType7.value)} units expected`
+                : "No data"
+            }
+            tone="amber"
+          />
+          <KPICard
+            icon={TrendingUp}
+            title="Year-over-Year Demand"
+            value={yoyDisplay?.value || "-"}
+            description={
+              yoyDisplay ? (
+                <>
+                  <span
+                    className={
+                      yoyDisplay.trend === "Increasing"
+                        ? "text-red-600 font-medium"
+                        : yoyDisplay.trend === "Decreasing"
+                          ? "text-green-600 font-medium"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {yoyDisplay.comparison} • {yoyDisplay.trend}
+                  </span>
+                  <br />
+                  <span className="text-xs text-muted-foreground">
+                    {yoyDisplay.range} vs last year
+                  </span>
+                </>
+              ) : (
+                "No comparison data"
+              )
+            }
+            tone={yoyDisplay?.tone || "neutral"}
           />
         </div>
       )}
       {/* PRIMARY FORECAST SECTION */}
       <div>
         {mode === "backtest" && (
-          <ChartCardWithIcon
-            icon={TrendingUp}
-            title="Backtest: Actual vs Predicted"
-            description="Model validation on unseen data"
-          >
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <LineChart data={backtestGrouped}>
-                <CartesianGrid strokeDasharray="3 3" />
+          <>
+            <ChartCardWithIcon
+              icon={TrendingUp}
+              title="Total Demand Backtest"
+              description="Actual vs predicted demand across all blood types"
+            >
+              <div className="mb-4 flex justify-end">
+                <div className="flex rounded-md border border-border bg-background p-0.5">
+                  {[
+                    {
+                      key: "80",
+                      label: "80% CI",
+                      active: "bg-green-600 text-white",
+                    },
+                    {
+                      key: "95",
+                      label: "95% CI",
+                      active: "bg-blue-600 text-white",
+                    },
+                    {
+                      key: "both",
+                      label: "Both",
+                      active: "bg-primary text-primary-foreground",
+                    },
+                  ].map(({ key, label, active }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedBacktestCI(key)}
+                      className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        selectedBacktestCI === key
+                          ? `${active} shadow-sm`
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-                <XAxis dataKey="date" />
-                <YAxis />
+              <ChartContainer config={chartConfig} className="h-72 w-full">
+                <ComposedChart data={backtestGrouped}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <ChartTooltip content={<BacktestTooltip />} />
 
-                <ChartTooltip />
-
-                {/* ACTUAL */}
-                <Line
-                  type="monotone"
-                  dataKey="actual"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                />
-
-                {/* PREDICTED */}
-                <Line
-                  type="monotone"
-                  dataKey="predicted"
-                  stroke="#3b82f6"
-                  strokeDasharray="5 5"
-                  strokeWidth={2}
-                />
-              </LineChart>
-            </ChartContainer>
-            {/* METRICS */}
-            {metrics && (
-              <div className="mt-4 text-sm">
-                RMSE (Model): <b>{metrics.RMSE_model}</b> | MAE (Model):{" "}
-                <b>{metrics.MAE_model}</b> | MAPE (Model):{" "}
-                <b>{metrics.MAPE_model}%</b>
-                <br />
-                RMSE (Baseline): <b>{metrics.RMSE_baseline}</b> | MAE
-                (Baseline): <b>{metrics.MAE_baseline}</b> | MAPE (Baseline):{" "}
-                <b>{metrics.MAPE_baseline}%</b>
-                {/* 🔥 NEW SECTION */}
-                {totals && (
-                  <>
-                    <hr className="my-2 opacity-30" />
-                    Total Actual: <b>{totals.actual_total}</b> | Predicted:{" "}
-                    <b>{totals.predicted_total}</b>
-                    <br />
-                    Difference:{" "}
-                    <b
-                      className={
-                        totals.difference > 0
-                          ? "text-blue-500"
-                          : totals.difference < 0
-                            ? "text-red-500"
-                            : ""
+                  {/* 95% CI band */}
+                  {(selectedBacktestCI === "95" ||
+                    selectedBacktestCI === "both") && (
+                    <Area
+                      type="linear"
+                      dataKey="ci_95_upper"
+                      baseValue={(d) =>
+                        Number.isFinite(d.ci_95_lower)
+                          ? d.ci_95_lower
+                          : d.predicted
                       }
+                      fill="rgba(147,197,253,0.25)"
+                      stroke="none"
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* 80% CI band */}
+                  {(selectedBacktestCI === "80" ||
+                    selectedBacktestCI === "both") && (
+                    <Area
+                      type="linear"
+                      dataKey="ci_80_upper"
+                      baseValue={(d) =>
+                        Number.isFinite(d.ci_80_lower)
+                          ? d.ci_80_lower
+                          : d.predicted
+                      }
+                      fill="rgba(34,197,94,0.35)"
+                      stroke="none"
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* Lower bound lines */}
+                  {(selectedBacktestCI === "80" ||
+                    selectedBacktestCI === "both") && (
+                    <Line
+                      type="linear"
+                      dataKey="ci_80_lower"
+                      stroke="#16a34a"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {(selectedBacktestCI === "95" ||
+                    selectedBacktestCI === "both") && (
+                    <Line
+                      type="linear"
+                      dataKey="ci_95_lower"
+                      stroke="#2563eb"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* ACTUAL */}
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                  />
+
+                  {/* PREDICTED */}
+                  <Line
+                    type="monotone"
+                    dataKey="predicted"
+                    stroke="#dc2626"
+                    strokeWidth={3}
+                    dot={{ r: 3 }}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+              {metrics && totals && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Model Error
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      RMSE: <b>{formatMetric(metrics.RMSE_model)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAE: <b>{formatMetric(metrics.MAE_model)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAPE: <b>{formatMetric(metrics.MAPE_model, "%")}</b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Baseline Error
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      RMSE: <b>{formatMetric(metrics.RMSE_baseline)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAE: <b>{formatMetric(metrics.MAE_baseline)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAPE: <b>{formatMetric(metrics.MAPE_baseline, "%")}</b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Actual vs Predicted
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      Actual: <b>{formatMetric(totals.actual_total)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      Predicted: <b>{formatMetric(totals.predicted_total)}</b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Difference
+                    </p>
+                    <p
+                      className={`mt-2 text-lg font-bold ${
+                        totals.difference > 0
+                          ? "text-blue-600"
+                          : totals.difference < 0
+                            ? "text-red-600"
+                            : "text-foreground"
+                      }`}
                     >
                       {totals.difference > 0 ? "+" : ""}
-                      {totals.difference}
-                    </b>{" "}
-                    ({totals.percentage_error}%)
-                  </>
-                )}
+                      {formatMetric(totals.difference)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatMetric(totals.percentage_error, "%")} error
+                    </p>
+                  </div>
+                </div>
+              )}
+              {false && selectedBacktestMetrics && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Model Error
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      RMSE:{" "}
+                      <b>{formatMetric(selectedBacktestMetrics.RMSE_model)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAE:{" "}
+                      <b>{formatMetric(selectedBacktestMetrics.MAE_model)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAPE:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.MAPE_model, "%")}
+                      </b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Baseline Error
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      RMSE:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.RMSE_baseline)}
+                      </b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAE:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.MAE_baseline)}
+                      </b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAPE:{" "}
+                      <b>
+                        {formatMetric(
+                          selectedBacktestMetrics.MAPE_baseline,
+                          "%",
+                        )}
+                      </b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Actual vs Predicted
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      Actual:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.actual_total)}
+                      </b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      Predicted:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.predicted_total)}
+                      </b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Difference
+                    </p>
+                    <p
+                      className={`mt-2 text-lg font-bold ${
+                        selectedBacktestMetrics.difference > 0
+                          ? "text-blue-600"
+                          : selectedBacktestMetrics.difference < 0
+                            ? "text-red-600"
+                            : "text-foreground"
+                      }`}
+                    >
+                      {selectedBacktestMetrics.difference > 0 ? "+" : ""}
+                      {formatMetric(selectedBacktestMetrics.difference)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatMetric(
+                        selectedBacktestMetrics.percentage_error,
+                        "%",
+                      )}{" "}
+                      error
+                    </p>
+                  </div>
+                </div>
+              )}
+              {/* METRICS */}
+              {false && metrics && (
+                <div className="mt-4 text-sm">
+                  RMSE (Model): <b>{metrics.RMSE_model}</b> | MAE (Model):{" "}
+                  <b>{metrics.MAE_model}</b> | MAPE (Model):{" "}
+                  <b>{metrics.MAPE_model}%</b>
+                  <br />
+                  RMSE (Baseline): <b>{metrics.RMSE_baseline}</b> | MAE
+                  (Baseline): <b>{metrics.MAE_baseline}</b> | MAPE (Baseline):{" "}
+                  <b>{metrics.MAPE_baseline}%</b>
+                  {/* 🔥 NEW SECTION */}
+                  {totals && (
+                    <>
+                      <hr className="my-2 opacity-30" />
+                      Total Actual: <b>{totals.actual_total}</b> | Predicted:{" "}
+                      <b>{totals.predicted_total}</b>
+                      <br />
+                      Difference:{" "}
+                      <b
+                        className={
+                          totals.difference > 0
+                            ? "text-blue-500"
+                            : totals.difference < 0
+                              ? "text-red-500"
+                              : ""
+                        }
+                      >
+                        {totals.difference > 0 ? "+" : ""}
+                        {totals.difference}
+                      </b>{" "}
+                      ({totals.percentage_error}%)
+                    </>
+                  )}
+                </div>
+              )}
+            </ChartCardWithIcon>
+            <ChartCardWithIcon
+              icon={Droplet}
+              title="Backtest by Blood Type"
+              description="Actual vs predicted demand for each individual blood type"
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {BLOOD_TYPES.map((bt) => (
+                    <button
+                      key={bt}
+                      type="button"
+                      onClick={() => setSelectedBacktestBloodType(bt)}
+                      className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        selectedBacktestBloodType === bt
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {bt}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex rounded-md border border-border bg-background p-0.5">
+                  {[
+                    {
+                      key: "80",
+                      label: "80% CI",
+                      active: "bg-green-600 text-white",
+                    },
+                    {
+                      key: "95",
+                      label: "95% CI",
+                      active: "bg-blue-600 text-white",
+                    },
+                    {
+                      key: "both",
+                      label: "Both",
+                      active: "bg-primary text-primary-foreground",
+                    },
+                  ].map(({ key, label, active }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedBloodTypeCI(key)}
+                      className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        selectedBloodTypeCI === key
+                          ? `${active} shadow-sm`
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-          </ChartCardWithIcon>
+
+              <ChartContainer config={chartConfig} className="h-72 w-full">
+                <ComposedChart data={bloodTypeBacktestGrouped}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <ChartTooltip content={<BacktestTooltip />} />
+
+                  {/* 95% CI band */}
+                  {(selectedBloodTypeCI === "95" ||
+                    selectedBloodTypeCI === "both") && (
+                    <Area
+                      type="linear"
+                      dataKey="ci_95_upper"
+                      baseValue={(d) =>
+                        Number.isFinite(d.ci_95_lower)
+                          ? d.ci_95_lower
+                          : d.predicted
+                      }
+                      fill="rgba(147,197,253,0.25)"
+                      stroke="none"
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* 80% CI band */}
+                  {(selectedBloodTypeCI === "80" ||
+                    selectedBloodTypeCI === "both") && (
+                    <Area
+                      type="linear"
+                      dataKey="ci_80_upper"
+                      baseValue={(d) =>
+                        Number.isFinite(d.ci_80_lower)
+                          ? d.ci_80_lower
+                          : d.predicted
+                      }
+                      fill="rgba(34,197,94,0.35)"
+                      stroke="none"
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* Lower bound lines */}
+                  {(selectedBloodTypeCI === "80" ||
+                    selectedBloodTypeCI === "both") && (
+                    <Line
+                      type="linear"
+                      dataKey="ci_80_lower"
+                      stroke="#16a34a"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {(selectedBloodTypeCI === "95" ||
+                    selectedBloodTypeCI === "both") && (
+                    <Line
+                      type="linear"
+                      dataKey="ci_95_lower"
+                      stroke="#2563eb"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="predicted"
+                    stroke="#dc2626"
+                    strokeWidth={3}
+                    dot={{ r: 3 }}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+
+              {selectedBacktestMetrics && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Model Error
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      RMSE:{" "}
+                      <b>{formatMetric(selectedBacktestMetrics.RMSE_model)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAE:{" "}
+                      <b>{formatMetric(selectedBacktestMetrics.MAE_model)}</b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAPE:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.MAPE_model, "%")}
+                      </b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Baseline Error
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      RMSE:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.RMSE_baseline)}
+                      </b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAE:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.MAE_baseline)}
+                      </b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      MAPE:{" "}
+                      <b>
+                        {formatMetric(
+                          selectedBacktestMetrics.MAPE_baseline,
+                          "%",
+                        )}
+                      </b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Actual vs Predicted
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">
+                      Actual:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.actual_total)}
+                      </b>
+                    </p>
+                    <p className="text-sm text-foreground">
+                      Predicted:{" "}
+                      <b>
+                        {formatMetric(selectedBacktestMetrics.predicted_total)}
+                      </b>
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Difference
+                    </p>
+                    <p
+                      className={`mt-2 text-lg font-bold ${
+                        selectedBacktestMetrics.difference > 0
+                          ? "text-blue-600"
+                          : selectedBacktestMetrics.difference < 0
+                            ? "text-red-600"
+                            : "text-foreground"
+                      }`}
+                    >
+                      {selectedBacktestMetrics.difference > 0 ? "+" : ""}
+                      {formatMetric(selectedBacktestMetrics.difference)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatMetric(
+                        selectedBacktestMetrics.percentage_error,
+                        "%",
+                      )}{" "}
+                      error
+                    </p>
+                  </div>
+                </div>
+              )}
+            </ChartCardWithIcon>
+          </>
         )}
         {/* MAIN TREND CHART */}
         {mode === "live" && (
@@ -792,6 +1410,19 @@ export default function DemandForecastingTab({ hospitalId }) {
         )}
       </div>
 
+      <ChartCardWithIcon
+        icon={Calendar}
+        title="30-Day Demand Budget by Blood Type"
+        description="Forecasted total demand for planning"
+      >
+        <DemandBudgetCard
+          demandBudget30Days={demandBudget30Days}
+          rankedBudget={rankedBudget}
+          trendByBloodType={trendByBloodType} // 👈 ADD THIS
+          BLOOD_TYPES={BLOOD_TYPES}
+        />
+      </ChartCardWithIcon>
+
       {/* PROJECTION & TRENDS SECTION */}
       {mode === "live" && (
         <div className="grid grid-cols-1 gap-6">
@@ -876,237 +1507,168 @@ export default function DemandForecastingTab({ hospitalId }) {
               </LineChart>
             </ChartContainer>
           </ChartCardWithIcon>
-        </div>
-      )}
 
-      {/* DISTRIBUTION SECTION */}
-      {mode === "live" && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* INVENTORY SIMULATION */}
+          <div className="space-y-2">
+            <HighDemandStreakAlert streaks={streaks} />
+          </div>
+
           <ChartCardWithIcon
             icon={GitBranch}
-            title="Inventory Projection"
-            description="With and without continued donations over 30 days"
+            title="7-Day Demand Trend by Blood Type"
+            description="Forecast vs recent demand direction"
           >
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <ComposedChart data={trajectory}>
-                <defs>
-                  <linearGradient id="colorWith" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor="hsl(142, 71%, 45%)"
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="hsl(142, 71%, 45%)"
-                      stopOpacity={0.1}
-                    />
-                  </linearGradient>
-                  <linearGradient id="colorWithout" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor="hsl(0, 84%, 60%)"
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="hsl(0, 84%, 60%)"
-                      stopOpacity={0.1}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="date"
-                  className="text-xs"
-                  tickFormatter={(value) =>
-                    new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }
-                />
-                <YAxis className="text-xs" />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(value) =>
-                        new Date(value).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })
-                      }
-                    />
-                  }
-                />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Area
-                  type="monotone"
-                  dataKey="with_donation"
-                  fill="url(#colorWith)"
-                  stroke="hsl(142, 71%, 45%)"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="no_donation"
-                  fill="url(#colorWithout)"
-                  stroke="hsl(0, 84%, 60%)"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </ComposedChart>
-            </ChartContainer>
+            <BloodTypeTrendCard
+              trendByBloodType={trendByBloodType}
+              BLOOD_TYPES={BLOOD_TYPES}
+            />
           </ChartCardWithIcon>
 
-          {/* INVENTORY FLOW */}
           <ChartCardWithIcon
-            icon={BarChart3}
-            title="Inventory Flow Timeline"
-            description="Daily incoming and outgoing inventory movements"
+            icon={Activity}
+            title="Forecast Confidence Intervals"
+            description="Residual-based 80% and 95% prediction intervals by blood type"
           >
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <BarChart data={flowChartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="date"
-                  className="text-xs"
-                  tickFormatter={(value) =>
-                    new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }
-                />
-                <YAxis className="text-xs" />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(value) =>
-                        new Date(value).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {BLOOD_TYPES.map((bt) => (
+                  <button
+                    key={bt}
+                    type="button"
+                    onClick={() => setSelectedForecastBloodType(bt)}
+                    className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selectedForecastBloodType === bt
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {bt}
+                  </button>
+                ))}
+              </div>
+              <div className="flex rounded-md border border-border bg-background p-0.5">
+                {[
+                  {
+                    key: "80",
+                    label: "80% CI",
+                    active: "bg-green-600 text-white",
+                  },
+                  {
+                    key: "95",
+                    label: "95% CI",
+                    active: "bg-blue-600 text-white",
+                  },
+                  {
+                    key: "both",
+                    label: "Both",
+                    active: "bg-primary text-primary-foreground",
+                  },
+                ].map(({ key, label, active }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedCI(key)}
+                    className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selectedCI === key
+                        ? `${active} shadow-sm`
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {hasForecastIntervals ? (
+              <ChartContainer config={chartConfig} className="h-72 w-full">
+                <ComposedChart data={forecastIntervalData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+
+                  {/* 🔴 FIX: NEVER use function domain here */}
+                  <YAxis domain={[0, "dataMax"]} />
+
+                  <ChartTooltip content={<ForecastTooltip />} />
+
+                  {/* =========================
+        95% CI (background)
+       ========================= */}
+                  {(selectedCI === "95" || selectedCI === "both") && (
+                    <Area
+                      type="linear"
+                      dataKey="ci_95_upper"
+                      baseValue={(d) =>
+                        Number.isFinite(d.ci_95_lower)
+                          ? d.ci_95_lower
+                          : d.prediction
                       }
+                      fill="rgba(147,197,253,0.25)"
+                      stroke="none"
+                      isAnimationActive={false}
                     />
-                  }
-                />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Bar
-                  dataKey="incoming"
-                  fill="var(--color-incoming)"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="outgoing"
-                  fill="var(--color-outgoing)"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ChartContainer>
+                  )}
+
+                  {/* =========================
+        80% CI (foreground)
+       ========================= */}
+                  {(selectedCI === "80" || selectedCI === "both") && (
+                    <Area
+                      type="linear"
+                      dataKey="ci_80_upper"
+                      baseValue={(d) =>
+                        Number.isFinite(d.ci_80_lower)
+                          ? d.ci_80_lower
+                          : d.prediction
+                      }
+                      fill="rgba(34,197,94,0.35)"
+                      stroke="none"
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* Lower bound lines */}
+                  {(selectedCI === "80" || selectedCI === "both") && (
+                    <Line
+                      type="linear"
+                      dataKey="ci_80_lower"
+                      stroke="#16a34a"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {(selectedCI === "95" || selectedCI === "both") && (
+                    <Line
+                      type="linear"
+                      dataKey="ci_95_lower"
+                      stroke="#2563eb"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* Prediction */}
+                  <Line
+                    type="monotone"
+                    dataKey="prediction"
+                    stroke="#dc2626"
+                    strokeWidth={3}
+                    dot={{ r: 3 }}
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 p-6 text-center">
+                <p>No confidence interval data</p>
+              </div>
+            )}
           </ChartCardWithIcon>
         </div>
       )}
-      {mode === "live" && (
-        <ChartCardWithIcon
-          icon={AlertTriangle}
-          title="Blood Type Risk Levels"
-          description="Forecast demand compared with current inventory coverage"
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {["HIGH", "MEDIUM", "LOW"].map((level) => {
-              const styles =
-                level === "HIGH"
-                  ? {
-                      badge: "border-red-200 bg-red-50 text-red-700",
-                      border: "border-red-200",
-                    }
-                  : level === "MEDIUM"
-                    ? {
-                        badge: "border-yellow-200 bg-yellow-50 text-yellow-700",
-                        border: "border-yellow-200",
-                      }
-                    : {
-                        badge: "border-green-200 bg-green-50 text-green-700",
-                        border: "border-green-200",
-                      };
-              const items = bloodRiskGroups?.[level] || [];
-              const isExpanded = expandedLevels[level];
-              const visibleItems = isExpanded ? items : items.slice(0, 3);
-              const hasMore = items.length > 3;
-
-              return (
-                <div
-                  key={level}
-                  className={`flex min-h-[220px] flex-col rounded-md border bg-background p-4 ${styles.border}`}
-                >
-                  <div className="mb-4 flex items-center justify-between">
-                    <span
-                      className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${styles.badge}`}
-                    >
-                      {level} Risk
-                    </span>
-
-                    <span className="text-xs text-muted-foreground">
-                      {items.length} types
-                    </span>
-                  </div>
-
-                  <div className="flex-1 space-y-2">
-                    {items.length ? (
-                      <>
-                        {visibleItems.map((bt) => (
-                          <div
-                            key={bt.blood_type}
-                            className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2"
-                          >
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">
-                                {bt.blood_type}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {bt.stock} units in stock
-                              </p>
-                            </div>
-
-                            <span className="text-xs font-medium text-muted-foreground">
-                              {bt.daysCover} days
-                            </span>
-                          </div>
-                        ))}
-
-                        {hasMore && (
-                          <button
-                            type="button"
-                            onClick={() => toggleLevel(level)}
-                            className="w-full rounded-md py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
-                          >
-                            {isExpanded
-                              ? "Show less"
-                              : `View ${items.length - 3} more`}
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <div className="flex h-full items-center justify-center rounded-md border border-dashed border-border bg-muted/30">
-                        <p className="text-xs text-muted-foreground">
-                          No blood types in this category
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </ChartCardWithIcon>
-      )}
-
-      <ForecastMap />
     </div>
   );
 }

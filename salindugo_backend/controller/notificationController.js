@@ -110,6 +110,47 @@ export const markAllAsRead = async (req, res) => {
 };
 
 // ==========================================
+// POST /api/notifications/forecast-alerts → Insert forecast alerts (deduped per day)
+// ==========================================
+export const createForecastAlerts = async (req, res) => {
+  try {
+    const { id: userId } = req.user;
+    const { alerts } = req.body;
+
+    if (!Array.isArray(alerts) || alerts.length === 0) {
+      return res.json({ inserted: 0 });
+    }
+
+    let inserted = 0;
+
+    for (const { title, message, type } of alerts) {
+      if (!title || !message || !type) continue;
+
+      // Skip if this alert type was already sent today for this user
+      const existing = await pool.query(
+        `SELECT 1 FROM notifications
+         WHERE user_id = $1 AND type = $2 AND DATE(created_at) = CURRENT_DATE
+         LIMIT 1`,
+        [userId, type]
+      );
+      if (existing.rows.length > 0) continue;
+
+      await pool.query(
+        `INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
+         VALUES ($1, $2, $3, $4, $5, NULL)`,
+        [userId, userId, title, message, type]
+      );
+      inserted++;
+    }
+
+    res.json({ inserted });
+  } catch (err) {
+    console.error("Error creating forecast alerts:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// ==========================================
 // DELETE /api/notifications/:id → Delete notification
 // ==========================================
 export const deleteNotification = async (req, res) => {

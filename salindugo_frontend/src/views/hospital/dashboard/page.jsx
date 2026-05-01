@@ -10,26 +10,19 @@ import {
   HeartHandshake,
   KeyRound,
   MapPin,
+  Printer,
   Settings,
   TrendingUp,
   Upload,
   User,
 } from "lucide-react";
 import Navbar from "../../../components/ui/navbar";
-const BloodRequestsTab = lazy(() => import("../components/BloodRequestsTab"));
-const DonationSchedulesTab = lazy(
-  () => import("../components/DonationSchedulesTab"),
-);
-const InventoryTab = lazy(() => import("../components/InventoryTab"));
-const InventoryHistoryTab = lazy(
-  () => import("../components/InventoryHistoryTab"),
-);
-const NotificationTab = lazy(
-  () => import("../../user/components/NotificationTab"),
-);
+import ImportData from "../components/ImportPage";
 const DemandForecastingTab = lazy(
   () => import("../components/DemandForecastingTab"),
 );
+const ForecastReportTab = lazy(() => import("../components/ForecastReportTab"));
+
 import BloodDropLoader from "../../../utils/bloodDropLoader";
 import { AuthContext } from "../../../context/AuthContext";
 
@@ -40,35 +33,11 @@ export default function HospitalDashboard() {
     name: user?.full_name || "Hospital Dashboard",
     location: [user?.city, user?.province].filter(Boolean).join(", "),
   };
-  const [activeTab, setActiveTab] = useState("inventory");
+  const [activeTab, setActiveTab] = useState("forecasting");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const navItems = [
-    {
-      id: "requests",
-      label: "Requests",
-      description: "Incoming blood requests",
-      icon: HeartHandshake,
-    },
-    {
-      id: "donors",
-      label: "Donation Schedules",
-      description: "Booked donor visits",
-      icon: CalendarDays,
-    },
-    {
-      id: "inventory",
-      label: "Inventory",
-      description: "Stock levels and bags",
-      icon: Droplets,
-    },
-    {
-      id: "history",
-      label: "History",
-      description: "Inventory movement log",
-      icon: Archive,
-    },
     {
       id: "forecasting",
       label: "Forecasting",
@@ -76,10 +45,16 @@ export default function HospitalDashboard() {
       icon: TrendingUp,
     },
     {
-      id: "notifications",
-      label: "Notifications",
-      description: "Operational updates",
-      icon: Bell,
+      id: "report",
+      label: "Print Report",
+      description: "Printable forecast summary",
+      icon: Printer,
+    },
+    {
+      id: "import",
+      label: "Import Data",
+      description: "Upload inventory records",
+      icon: Upload,
     },
   ];
 
@@ -96,19 +71,13 @@ export default function HospitalDashboard() {
       href: "/change-password",
       icon: KeyRound,
     },
-    {
-      label: "Import Data",
-      description: "Upload inventory records",
-      href: "/import-data",
-      icon: Upload,
-    },
   ];
 
   const helpItems = [
-    "Use Inventory to add, monitor, and update available blood bags.",
-    "Check Requests for incoming blood needs from recipients.",
-    "Review Donation Schedules before preparing collection slots.",
-    "Open Forecasting to compare projected demand with current stock.",
+    "Open Forecasting to view 30-day demand projections for each blood type and total demand.",
+    "Switch to Backtest mode to see how accurate past forecasts were against actual data.",
+    "Use Import Data under Settings to upload historical inventory records and improve forecast accuracy.",
+    "Confidence interval bands show the expected range of demand.",
   ];
 
   return (
@@ -139,6 +108,8 @@ export default function HospitalDashboard() {
             >
               {navItems.map((item) => {
                 const Icon = item.icon;
+
+                // ✅ FIX: remove `item.type` dependency
                 const isActive = activeTab === item.id;
 
                 return (
@@ -158,6 +129,7 @@ export default function HospitalDashboard() {
                         isActive ? "bg-primary" : "bg-transparent"
                       }`}
                     />
+
                     <span
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors ${
                         isActive
@@ -167,6 +139,7 @@ export default function HospitalDashboard() {
                     >
                       <Icon className="h-4 w-4" />
                     </span>
+
                     <span className="min-w-0">
                       <span
                         className={`block truncate text-sm ${
@@ -282,41 +255,23 @@ export default function HospitalDashboard() {
           <div className="flex justify-center min-h-full px-4 py-8">
             <div className="w-full">
               <div className="space-y-6">
-                {activeTab === "requests" && (
-                  <Suspense fallback={<BloodDropLoader />}>
-                    <BloodRequestsTab />
-                  </Suspense>
-                )}
-
-                {activeTab === "donors" && (
-                  <Suspense fallback={<BloodDropLoader />}>
-                    <DonationSchedulesTab />
-                  </Suspense>
-                )}
-
-                {activeTab === "inventory" && (
-                  <Suspense fallback={<BloodDropLoader />}>
-                    <InventoryTab accessToken={accessToken} />
-                  </Suspense>
-                )}
-
                 {activeTab === "forecasting" && (
                   <Suspense fallback={<BloodDropLoader />}>
                     <DemandForecastingTab hospitalId={user.id} />
                   </Suspense>
                 )}
 
-                {activeTab === "history" && (
+                {activeTab === "report" && (
                   <Suspense fallback={<BloodDropLoader />}>
-                    <InventoryHistoryTab accessToken={accessToken} />
+                    <ForecastReportTab
+                      hospitalId={user.id}
+                      hospitalName={hospitalProfile.name}
+                      hospitalLocation={hospitalProfile.location}
+                    />
                   </Suspense>
                 )}
 
-                {activeTab === "notifications" && (
-                  <Suspense fallback={<BloodDropLoader />}>
-                    <NotificationTab accessToken={accessToken} />
-                  </Suspense>
-                )}
+                {activeTab === "import" && <ImportData />}
               </div>
             </div>
           </div>

@@ -24,6 +24,9 @@ app.add_middleware(
 )
 
 TARGET = "blood_requests"
+BACKTEST_CUTOFF_DATE = pd.Timestamp("2025-09-30")
+BACKTEST_START_DATE = pd.Timestamp("2025-10-01")
+BACKTEST_END_DATE = pd.Timestamp("2025-10-31")
 
 # ====================================================
 # FEATURES — must match training FEATURES list exactly
@@ -350,19 +353,33 @@ def forecast(hospital_id, days: int = 30):
         if df.empty:
             return []
 
-        df          = complete_missing_dates(df)
-        df          = build_features(df)
+        df = complete_missing_dates(df)
+        residual_sd_by_type = compute_residual_sd_by_blood_type(
+            build_backtest_comparison(df)
+        )
+        df = build_features(df)
         forecast_df = recursive_forecast_with_meta(models, df, days)
 
         if forecast_df.empty:
             return []
 
         forecast_df["date"] = forecast_df["date"].astype(str)
-        return (
-            forecast_df[["date", "blood_type", "blood_requests"]]
-            .rename(columns={"blood_requests": "predicted_demand"})
-            .to_dict(orient="records")
-        )
+        records = []
+        for _, row in forecast_df.iterrows():
+            predicted_demand = row["blood_requests"]
+            interval = prediction_interval_payload(
+                predicted_demand,
+                row["blood_type"],
+                residual_sd_by_type,
+            )
+            records.append({
+                "date": row["date"],
+                "blood_type": row["blood_type"],
+                "predicted_demand": interval["prediction"],
+                **interval,
+            })
+
+        return records
 
     except Exception as e:
         print("FORECAST ERROR:", str(e))
@@ -419,6 +436,23 @@ def history_total(hospital_id):
         print("HISTORY-TOTAL ERROR:", str(e))
         return {"error": str(e)}
 
+@app.get("/history/{hospital_id}")
+def history_by_type(hospital_id):
+    try:
+        df = load_center_history(hospital_id)
+        df = complete_missing_dates(df)
+
+        if df.empty:
+            return []
+
+        df["date"] = df["date"].astype(str)
+
+        return df.to_dict(orient="records")
+
+    except Exception as e:
+        print("HISTORY ERROR:", str(e))
+        return {"error": str(e)}
+
 def mape(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     mask = y_true != 0
@@ -428,6 +462,132 @@ def mape(y_true, y_pred):
         np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
     )
 
+def clean_metric(value, decimals=3):
+    if pd.isna(value) or np.isinf(value):
+        return None
+    return round(float(value), decimals)
+
+
+def build_backtest_comparison(full_df):
+    full_df = full_df.copy()
+    full_df["date"] = pd.to_datetime(full_df["date"])
+
+    train_df = full_df[full_df["date"] <= BACKTEST_CUTOFF_DATE].copy()
+    test_df = full_df[
+        (full_df["date"] >= BACKTEST_START_DATE) &
+        (full_df["date"] <= BACKTEST_END_DATE)
+    ].copy()
+
+    if train_df.empty or test_df.empty:
+        return pd.DataFrame()
+
+    train_features = build_features(train_df)
+    if train_features.empty:
+        return pd.DataFrame()
+
+    days = (BACKTEST_END_DATE - BACKTEST_CUTOFF_DATE).days
+    forecast_df = recursive_forecast_with_meta(models, train_features, days)
+    if forecast_df.empty:
+        return pd.DataFrame()
+
+    merged = pd.merge(
+        forecast_df,
+        test_df,
+        on=["date", "blood_type"],
+        how="inner",
+        suffixes=("_pred", "_actual"),
+    )
+
+    merged = merged[
+        (merged["date"] >= BACKTEST_START_DATE) &
+        (merged["date"] <= BACKTEST_END_DATE)
+    ].copy()
+
+    if merged.empty:
+        return pd.DataFrame()
+
+    merged["blood_requests_actual"] = merged["blood_requests_actual"].fillna(0)
+    merged["blood_requests_pred"] = merged["blood_requests_pred"].fillna(0)
+
+    baseline = (
+        train_features[["date", "blood_type", "blood_requests"]]
+        .copy()
+        .rename(columns={"blood_requests": "lag_1_pred"})
+    )
+    baseline["date"] = baseline["date"] + pd.Timedelta(days=1)
+
+    merged = merged.merge(baseline, on=["date", "blood_type"], how="left")
+    merged["lag_1_pred"] = merged["lag_1_pred"].fillna(0)
+
+    return merged
+
+
+def compute_residual_sd_by_blood_type(merged):
+    residual_sd = {}
+    if merged.empty:
+        return residual_sd
+
+    for bt, group in merged.groupby("blood_type"):
+        residuals = group["blood_requests_actual"] - group["blood_requests_pred"]
+        sd = residuals.std(ddof=1)
+        if len(residuals) >= 2 and not pd.isna(sd) and not np.isinf(sd):
+            residual_sd[bt] = float(sd)
+
+    return residual_sd
+
+
+def interval_bounds(prediction, sd, multiplier):
+    lower = max(0.0, prediction - multiplier * sd)
+    upper = prediction + multiplier * sd
+    return [round(lower, 2), round(upper, 2)]
+
+
+def prediction_interval_payload(prediction, blood_type, residual_sd_by_type):
+    prediction = float(prediction or 0)
+    sd = residual_sd_by_type.get(blood_type)
+
+    payload = {
+        "prediction": round(prediction, 2),
+        "ci_80": None,
+        "ci_95": None,
+        "residual_sd": None,
+        "interval_status": "residual_sd_unavailable",
+    }
+
+    if sd is None:
+        return payload
+
+    payload["ci_80"] = interval_bounds(prediction, sd, 1.28)
+    payload["ci_95"] = interval_bounds(prediction, sd, 1.96)
+    payload["residual_sd"] = round(sd, 4)
+    payload["interval_status"] = "available"
+    return payload
+
+
+def compute_backtest_metrics(group):
+    y_true = group["blood_requests_actual"]
+    y_pred = group["blood_requests_pred"]
+    y_base = group["lag_1_pred"]
+
+    total_actual = float(y_true.sum())
+    total_pred = float(y_pred.sum())
+    total_error = total_pred - total_actual
+    total_error_pct = (total_error / total_actual) * 100 if total_actual > 0 else 0
+
+    return {
+        "RMSE_model": clean_metric(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "MAE_model": clean_metric(mean_absolute_error(y_true, y_pred)),
+        "MAPE_model": clean_metric(mape(y_true, y_pred), 2),
+        "RMSE_baseline": clean_metric(np.sqrt(mean_squared_error(y_true, y_base))),
+        "MAE_baseline": clean_metric(mean_absolute_error(y_true, y_base)),
+        "MAPE_baseline": clean_metric(mape(y_true, y_base), 2),
+        "actual_total": clean_metric(total_actual, 2),
+        "predicted_total": clean_metric(total_pred, 2),
+        "difference": clean_metric(total_error, 2),
+        "percentage_error": clean_metric(total_error_pct, 2),
+        "records": int(len(group)),
+    }
+
 @app.get("/backtest/{hospital_id}")
 def backtest(hospital_id):
     try:
@@ -435,12 +595,73 @@ def backtest(hospital_id):
         # LOAD DATA
         # ===============================
         full_df = load_center_history(hospital_id)
-        full_df = complete_missing_dates(full_df)
 
         if full_df.empty:
             return {"error": "No data available"}
 
+        full_df = complete_missing_dates(full_df)
         full_df["date"] = pd.to_datetime(full_df["date"])
+
+        merged = build_backtest_comparison(full_df)
+        if merged.empty:
+            return {"error": "Not enough overlapping data for backtest period"}
+
+        summary = compute_backtest_metrics(merged)
+        residual_sd_by_type = compute_residual_sd_by_blood_type(merged)
+
+        blood_type_summary = []
+        for bt, group in merged.groupby("blood_type"):
+            blood_type_summary.append({
+                "blood_type": bt,
+                "residual_sd": clean_metric(residual_sd_by_type.get(bt), 4),
+                **compute_backtest_metrics(group),
+            })
+
+        blood_type_summary = sorted(
+            blood_type_summary,
+            key=lambda row: row["blood_type"],
+        )
+
+        merged["prediction"] = None
+        merged["ci_80"] = None
+        merged["ci_95"] = None
+        merged["residual_sd"] = None
+        merged["interval_status"] = None
+
+        for index, row in merged.iterrows():
+            interval = prediction_interval_payload(
+                row["blood_requests_pred"],
+                row["blood_type"],
+                residual_sd_by_type,
+            )
+            merged.at[index, "prediction"] = interval["prediction"]
+            merged.at[index, "ci_80"] = interval["ci_80"]
+            merged.at[index, "ci_95"] = interval["ci_95"]
+            merged.at[index, "residual_sd"] = interval["residual_sd"]
+            merged.at[index, "interval_status"] = interval["interval_status"]
+
+        merged["date"] = merged["date"].astype(str)
+
+        return {
+            "mode": "by_blood_type",
+            "summary": {
+                "RMSE_model": summary["RMSE_model"],
+                "MAE_model": summary["MAE_model"],
+                "MAPE_model": summary["MAPE_model"],
+
+                "RMSE_baseline": summary["RMSE_baseline"],
+                "MAE_baseline": summary["MAE_baseline"],
+                "MAPE_baseline": summary["MAPE_baseline"],
+            },
+            "blood_type_summary": blood_type_summary,
+            "data": merged.to_dict(orient="records"),
+            "totals": {
+                "actual_total": summary["actual_total"],
+                "predicted_total": summary["predicted_total"],
+                "difference": summary["difference"],
+                "percentage_error": summary["percentage_error"],
+            },
+        }
 
         # ===============================
         # DEFINE SPLIT (OCTOBER ONLY)
@@ -516,53 +737,43 @@ def backtest(hospital_id):
         # ===============================
         # METRICS
         # ===============================
-        y_true = merged["blood_requests_actual"]
-        y_pred = merged["blood_requests_pred"]
-        y_base = merged["lag_1_pred"]
+        summary = compute_backtest_metrics(merged)
 
-        rmse      = float(np.sqrt(mean_squared_error(y_true, y_pred)))
-        mae       = float(mean_absolute_error(y_true, y_pred))
-        rmse_base = float(np.sqrt(mean_squared_error(y_true, y_base)))
-        mae_base  = float(mean_absolute_error(y_true, y_base))
+        blood_type_summary = []
+        for bt, group in merged.groupby("blood_type"):
+            blood_type_summary.append({
+                "blood_type": bt,
+                **compute_backtest_metrics(group),
+            })
 
-        mape_model = mape(y_true, y_pred)
-        mape_base  = mape(y_true, y_base)
+        blood_type_summary = sorted(
+            blood_type_summary,
+            key=lambda row: row["blood_type"],
+        )
 
         # ===============================
         # FORMAT OUTPUT
         # ===============================
         merged["date"] = merged["date"].astype(str)
 
-        # ===============================
-        # TOTAL DEMAND COMPARISON
-        # ===============================
-        total_actual = float(merged["blood_requests_actual"].sum())
-        total_pred   = float(merged["blood_requests_pred"].sum())
-
-        total_error = total_pred - total_actual
-
-        total_error_pct = (
-            (total_error / total_actual) * 100
-            if total_actual > 0 else 0
-        )
-
         return {
-            "mode": "single",  # 🔥 important for frontend
+            "mode": "by_blood_type",
             "summary": {
-                "RMSE_model":    round(rmse, 3),
-                "MAE_model":     round(mae, 3),
-                "MAPE_model":    round(mape_model, 2),
+                "RMSE_model": summary["RMSE_model"],
+                "MAE_model": summary["MAE_model"],
+                "MAPE_model": summary["MAPE_model"],
 
-                "RMSE_baseline": round(rmse_base, 3),
-                "MAE_baseline":  round(mae_base, 3),
-                "MAPE_baseline": round(mape_base, 2),
+                "RMSE_baseline": summary["RMSE_baseline"],
+                "MAE_baseline": summary["MAE_baseline"],
+                "MAPE_baseline": summary["MAPE_baseline"],
             },
+            "blood_type_summary": blood_type_summary,
             "data": merged.to_dict(orient="records"),
             "totals": {
-                "actual_total": round(total_actual, 2),
-                "predicted_total": round(total_pred, 2),
-                "difference": round(total_error, 2),
-                "percentage_error": round(total_error_pct, 2),
+                "actual_total": summary["actual_total"],
+                "predicted_total": summary["predicted_total"],
+                "difference": summary["difference"],
+                "percentage_error": summary["percentage_error"],
             },
         }
 
