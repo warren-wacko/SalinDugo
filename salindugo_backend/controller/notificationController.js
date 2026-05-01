@@ -13,7 +13,7 @@ export const getNotifications = async (req, res) => {
     // 1️⃣ Count total notifications for current user
     const totalCountResult = await pool.query(
       `SELECT COUNT(*) FROM notifications WHERE user_id = $1`,
-      [id]
+      [id],
     );
     const totalCount = parseInt(totalCountResult.rows[0].count);
     const totalPages = Math.ceil(totalCount / limit);
@@ -42,7 +42,7 @@ export const getNotifications = async (req, res) => {
       ORDER BY n.created_at DESC
       LIMIT $2 OFFSET $3
       `,
-      [id, limit, offset]
+      [id, limit, offset],
     );
 
     res.json({
@@ -70,7 +70,7 @@ export const markAsRead = async (req, res) => {
       WHERE notification_id = $1 AND user_id = $2
       RETURNING *
       `,
-      [id, userId]
+      [id, userId],
     );
 
     if (result.rows.length === 0)
@@ -96,7 +96,7 @@ export const markAllAsRead = async (req, res) => {
         WHERE user_id = $1
         RETURNING *
         `,
-      [userId]
+      [userId],
     );
 
     res.json({
@@ -131,14 +131,14 @@ export const createForecastAlerts = async (req, res) => {
         `SELECT 1 FROM notifications
          WHERE user_id = $1 AND type = $2 AND DATE(created_at) = CURRENT_DATE
          LIMIT 1`,
-        [userId, type]
+        [userId, type],
       );
       if (existing.rows.length > 0) continue;
 
       await pool.query(
         `INSERT INTO notifications (user_id, sender_id, title, message, type, related_id)
-         VALUES ($1, $2, $3, $4, $5, NULL)`,
-        [userId, userId, title, message, type]
+         VALUES ($1, $2, $3, $4, 'system', NULL)`,
+        [userId, userId, title, message],
       );
       inserted++;
     }
@@ -164,7 +164,7 @@ export const deleteNotification = async (req, res) => {
       WHERE notification_id = $1 AND user_id = $2
       RETURNING *
       `,
-      [id, userId]
+      [id, userId],
     );
 
     if (result.rows.length === 0)
