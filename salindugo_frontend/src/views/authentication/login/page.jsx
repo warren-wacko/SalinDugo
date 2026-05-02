@@ -356,17 +356,6 @@ export default function LoginPage() {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
-
-                {/* Register Link */}
-                <p className="text-sm text-muted-foreground">
-                  Don't have an account?{" "}
-                  <Link
-                    to="/register"
-                    className="text-primary hover:underline font-medium transition-colors"
-                  >
-                    Register here
-                  </Link>
-                </p>
               </div>
             </form>
           </CardContent>

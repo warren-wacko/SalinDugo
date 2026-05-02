@@ -1,813 +1,632 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
 import {
-  Activity,
-  ArrowRight,
   BarChart3,
-  Heart,
-  Plus,
-  Shield,
+  UploadCloud,
+  Printer,
+  Network,
+  Target,
   TrendingUp,
-  Zap,
-  Clock,
-  MapPin,
-  Bell,
+  ArrowRight,
+  Droplets,
+  Activity,
+  Database,
+  ChevronRight,
+  RefreshCw,
+  Cpu,
+  ShieldCheck,
+  Users,
+  ChevronDown,
+  CheckCircle2,
 } from "lucide-react";
 
-gsap.registerPlugin(ScrollTrigger);
-
-const bloodTypes = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
-
-const compatibleDonors = {
-  "O+": ["O+", "O-"],
-  "O-": ["O-"],
-  "A+": ["A+", "A-", "O+", "O-"],
-  "A-": ["A-", "O-"],
-  "B+": ["B+", "B-", "O+", "O-"],
-  "B-": ["B-", "O-"],
-  "AB+": ["AB+", "AB-", "A+", "A-", "B+", "B-", "O+", "O-"],
-  "AB-": ["AB-", "A-", "B-", "O-"],
-};
-
-const steps = [
-  {
-    num: "01",
-    icon: MapPin,
-    title: "Register & Locate",
-    desc: "Sign up in seconds and find the nearest donation center or request blood from your area.",
-  },
-  {
-    num: "02",
-    icon: Activity,
-    title: "Match & Verify",
-    desc: "Our system matches blood types, checks compatibility, and verifies donor eligibility instantly.",
-  },
-  {
-    num: "03",
-    icon: Bell,
-    title: "Connect & Save",
-    desc: "Get notified when there's a match. Coordinate pickup or donation — lives saved, time preserved.",
-  },
-];
-
 export default function Index() {
-  const [activeBloodType, setActiveBloodType] = useState("O+");
-  const mainRef = useRef(null);
-  const heroLeftRef = useRef(null);
-  const heroWidgetRef = useRef(null);
-  const rolesHeaderRef = useRef(null);
-  const roleCardsRef = useRef(null);
-  const featuresHeaderRef = useRef(null);
-  const featuresGridRef = useRef(null);
-  const ctaRef = useRef(null);
-  const navRef = useRef(null);
-  const compatRef = useRef(null);
-  const stepsHeaderRef = useRef(null);
-  const stepsGridRef = useRef(null);
-  const pulseRef = useRef(null);
-  const forecastHeaderRef = useRef(null);
-  const forecastGridRef = useRef(null);
+  // --- States ---
+  const [activeEngineTab, setActiveEngineTab] = useState(0);
+  const [activeRoleTab, setActiveRoleTab] = useState(0);
+  const [openFaq, setOpenFaq] = useState(null);
+
+  // --- Simulation State & Logic ---
+  const [chartData, setChartData] = useState([]);
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  const runSimulation = () => {
+    if (isSimulating) return;
+    setIsSimulating(true);
+    setChartData([]);
+
+    // Generate synthetic time-series data mimicking blood demand
+    const baseData = Array.from({ length: 30 }, (_, i) => {
+      const noise = Math.random() * 20 - 10;
+      const trend = i * 1.2;
+      const seasonal = Math.sin((i / (30 / (Math.PI * 2))) * 4) * 15;
+      return Math.max(15, Math.min(100, 35 + trend + seasonal + noise));
+    });
+
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      if (currentStep < 30) {
+        const val = Math.round(baseData[currentStep]);
+        setChartData((prev) => [...prev, val]);
+        currentStep++;
+      } else {
+        clearInterval(interval);
+        setIsSimulating(false);
+      }
+    }, 40);
+  };
 
   useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from(navRef.current, {
-        y: -80,
-        opacity: 0,
-        duration: 0.8,
-        ease: "power3.out",
-      });
-
-      if (heroLeftRef.current) {
-        const children = heroLeftRef.current.children;
-        gsap.from(children, {
-          y: 40,
-          opacity: 0,
-          duration: 0.7,
-          stagger: 0.12,
-          ease: "power3.out",
-          delay: 0.3,
-        });
-      }
-
-      gsap.from(heroWidgetRef.current, {
-        x: 60,
-        opacity: 0,
-        duration: 0.9,
-        ease: "power3.out",
-        delay: 0.6,
-      });
-
-      // Pulse heartbeat loop
-      if (pulseRef.current) {
-        gsap.to(pulseRef.current, {
-          scale: 1.15,
-          opacity: 0.7,
-          duration: 0.6,
-          ease: "power2.inOut",
-          yoyo: true,
-          repeat: -1,
-          repeatDelay: 0.4,
-        });
-      }
-
-      // How it works
-      gsap.from(stepsHeaderRef.current, {
-        scrollTrigger: {
-          trigger: stepsHeaderRef.current,
-          start: "top 85%",
-          toggleActions: "play none none none",
-        },
-        y: 30,
-        opacity: 0,
-        duration: 0.6,
-        ease: "power2.out",
-      });
-
-      if (stepsGridRef.current) {
-        const items = stepsGridRef.current.children;
-        gsap.from(items, {
-          scrollTrigger: {
-            trigger: stepsGridRef.current,
-            start: "top 80%",
-            toggleActions: "play none none none",
-          },
-          y: 50,
-          opacity: 0,
-          duration: 0.6,
-          stagger: 0.18,
-          ease: "power2.out",
-        });
-      }
-
-      gsap.from(rolesHeaderRef.current, {
-        scrollTrigger: {
-          trigger: rolesHeaderRef.current,
-          start: "top 85%",
-          toggleActions: "play none none none",
-        },
-        y: 30,
-        opacity: 0,
-        duration: 0.6,
-        ease: "power2.out",
-      });
-
-      if (roleCardsRef.current) {
-        const cards = roleCardsRef.current.children;
-        gsap.from(cards, {
-          scrollTrigger: {
-            trigger: roleCardsRef.current,
-            start: "top 80%",
-            toggleActions: "play none none none",
-          },
-          y: 50,
-          opacity: 0,
-          duration: 0.6,
-          stagger: 0.15,
-          ease: "power2.out",
-        });
-      }
-
-      gsap.from(featuresHeaderRef.current, {
-        scrollTrigger: {
-          trigger: featuresHeaderRef.current,
-          start: "top 85%",
-          toggleActions: "play none none none",
-        },
-        y: 30,
-        opacity: 0,
-        duration: 0.6,
-        ease: "power2.out",
-      });
-
-      if (featuresGridRef.current) {
-        const items = featuresGridRef.current.children;
-        gsap.from(items, {
-          scrollTrigger: {
-            trigger: featuresGridRef.current,
-            start: "top 80%",
-            toggleActions: "play none none none",
-          },
-          y: 40,
-          opacity: 0,
-          scale: 0.97,
-          duration: 0.5,
-          stagger: 0.12,
-          ease: "power2.out",
-        });
-      }
-
-      // Forecast section
-      gsap.from(forecastHeaderRef.current, {
-        scrollTrigger: {
-          trigger: forecastHeaderRef.current,
-          start: "top 85%",
-          toggleActions: "play none none none",
-        },
-        y: 30,
-        opacity: 0,
-        duration: 0.6,
-        ease: "power2.out",
-      });
-
-      if (forecastGridRef.current) {
-        const items = forecastGridRef.current.children;
-        gsap.from(items, {
-          scrollTrigger: {
-            trigger: forecastGridRef.current,
-            start: "top 80%",
-            toggleActions: "play none none none",
-          },
-          y: 50,
-          opacity: 0,
-          duration: 0.6,
-          stagger: 0.15,
-          ease: "power2.out",
-        });
-      }
-
-      gsap.from(ctaRef.current, {
-        scrollTrigger: {
-          trigger: ctaRef.current,
-          start: "top 85%",
-          toggleActions: "play none none none",
-        },
-        y: 40,
-        opacity: 0,
-        scale: 0.98,
-        duration: 0.7,
-        ease: "power2.out",
-      });
-    }, mainRef);
-
-    return () => ctx.revert();
+    const timer = setTimeout(() => {
+      runSimulation();
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (compatRef.current) {
-      const badges = compatRef.current.querySelectorAll("[data-compat-badge]");
-      gsap.fromTo(
-        badges,
-        { scale: 0.7, opacity: 0, y: 8 },
-        {
-          scale: 1,
-          opacity: 1,
-          y: 0,
-          duration: 0.35,
-          stagger: 0.05,
-          ease: "back.out(1.7)",
-        },
-      );
-    }
-  }, [activeBloodType]);
+  // --- Data Arrays ---
+  const roles = [
+    {
+      id: "planner",
+      icon: Target,
+      title: "Inventory Planners",
+      desc: "Move from reactive ordering to proactive planning. Identify 7-day surges before they happen.",
+      benefits: [
+        "Predictive 30-day horizons",
+        "Automated Peak Day alerts",
+        "Visual Day-of-Week seasonality",
+      ],
+    },
+    {
+      id: "admin",
+      icon: Activity,
+      title: "Blood Center Administrators",
+      desc: "Reduce blood wastage through tighter inventory buffers and track overall procurement efficiency.",
+      benefits: [
+        "Executive PDF report generation",
+        "YoY Demand Comparison KPIs",
+        "Wastage reduction metrics",
+      ],
+    },
+  ];
+
+  const faqs = [
+    {
+      q: "How does the system handle zero-demand days?",
+      a: "SalinDugo uses a Two-Stage Soft Gating architecture. A binary classifier first predicts the probability of demand occurring at all. If the probability is high, a regressor predicts the magnitude. This prevents the model from being biased toward zero on highly intermittent blood types (like AB-).",
+    },
+    {
+      q: "What format does my historical data need to be in?",
+      a: "The Import Module accepts standard CSV or XLSX files. The required schema is strictly four columns: request_date, blood_type, units_needed, and status. The system automatically handles Excel serial date conversions and strips out cancelled requests.",
+    },
+    {
+      q: "How are the Confidence Intervals calculated?",
+      a: "We use residual-based confidence intervals. The system calculates the standard deviation of out-of-sample residuals for each specific blood type during backtesting. It then applies these to future predictions to generate transparent 80% and 95% certainty bands.",
+    },
+  ];
 
   return (
-    <div ref={mainRef} className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-red-100 selection:text-red-900 overflow-hidden">
       {/* Navigation */}
-      <nav
-        ref={navRef}
-        className="fixed top-0 left-0 right-0 z-50 border-b border-divider bg-background/80 backdrop-blur-xl"
-      >
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Heart className="h-4 w-4 text-primary-foreground" />
+      <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md transition-all">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <Link to="/" className="flex items-center gap-2 group">
+            <div className="relative flex items-center justify-center h-8 w-8 rounded-lg bg-red-50 text-red-700 transition-transform group-hover:scale-105">
+              <Droplets className="h-5 w-5 absolute z-10" />
+              <div className="absolute inset-0 bg-red-100 rounded-lg scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-300"></div>
             </div>
-            <span className="font-display text-lg font-semibold tracking-tight text-foreground">
+            <span className="font-bold text-xl tracking-tight text-slate-900">
               SalinDugo
             </span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+            <a
+              href="#modules"
+              className="hover:text-red-700 transition-colors relative after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-red-700 hover:after:w-full after:transition-all after:duration-300 pb-1"
+            >
+              Core Modules
+            </a>
+            <a
+              href="#engine"
+              className="hover:text-red-700 transition-colors relative after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-red-700 hover:after:w-full after:transition-all after:duration-300 pb-1"
+            >
+              Forecasting Engine
+            </a>
+          </div>
+          <div className="flex items-center gap-4">
             <Button
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              variant="ghost"
               size="sm"
               asChild
+              className="text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             >
               <Link to="/login">Sign In</Link>
             </Button>
-            <Button variant="primary" size="sm" asChild>
-              <Link to="/register">Get Started</Link>
+            <Button
+              size="sm"
+              className="bg-red-700 hover:bg-red-800 text-white font-medium shadow-md shadow-red-700/20 transition-all hover:-translate-y-0.5"
+              asChild
+            >
+              <Link to="/dashboard">Go to Dashboard</Link>
             </Button>
           </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="relative pt-32 pb-20 overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)`,
-            backgroundSize: "32px 32px",
-          }}
-        />
+      {/* Hero Section */}
+      <section className="relative bg-gradient-to-b from-white to-slate-50 pt-20 pb-32 overflow-hidden border-b border-slate-200">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-40 pointer-events-none" />
 
-        <div className="relative mx-auto max-w-6xl px-6">
-          <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
-            {/* Left */}
-            <div ref={heroLeftRef} className="max-w-xl">
-              <div className="mb-6 flex items-center gap-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                  <Activity className="h-3 w-3" />
-                  Intelligent Blood Matching
-                </span>
-                {/* Heartbeat pulse */}
-                <div className="relative flex items-center justify-center">
-                  <div
-                    ref={pulseRef}
-                    className="absolute h-6 w-6 rounded-full bg-primary/20"
+        <div className="mx-auto max-w-7xl px-6 relative z-10 grid lg:grid-cols-2 gap-16 items-center">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-3 py-1.5 mb-6 text-sm font-semibold text-red-800 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+              </span>
+              SalinDugo - XGBoost Demand Forecasting
+            </div>
+
+            <h1 className="text-5xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-6xl mb-6 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
+              Predict demand. <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-700 to-red-500">
+                Optimize inventory.
+              </span>
+            </h1>
+
+            <p className="text-lg text-slate-600 leading-relaxed mb-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
+              SalinDugo bridges the gap between historical data and future
+              operational needs. Utilizing a two-stage XGBoost architecture, it
+              generates 30-day demand forecasts and quantifies uncertainty for
+              blood center inventory planning.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-4 animate-in fade-in slide-in-from-bottom-10 duration-700 delay-300">
+              <Button
+                size="lg"
+                className="group bg-red-700 hover:bg-red-800 text-white shadow-lg shadow-red-700/20 transition-all hover:-translate-y-0.5"
+                asChild
+              >
+                <Link to="/login">
+                  Open Prediction Dashboard
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                asChild
+              >
+                <Link to="/login">
+                  <Database className="mr-2 h-4 w-4 text-slate-500" />
+                  Import Historical Data
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          {/* SIMULATION VISUAL */}
+          <div className="relative hidden lg:block animate-in fade-in zoom-in-95 duration-1000 delay-300">
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-red-100 to-white blur-2xl opacity-50"></div>
+            <div className="relative rounded-2xl border border-slate-200 bg-white/50 backdrop-blur-xl p-6 shadow-2xl shadow-slate-200/50">
+              <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2">
+                  <Cpu
+                    className={`h-5 w-5 ${isSimulating ? "text-red-500 animate-pulse" : "text-slate-500"}`}
                   />
-                  <Heart className="relative h-3.5 w-3.5 text-primary fill-primary" />
+                  <span className="font-semibold text-sm text-slate-700">
+                    Live Demo Forecast Simulation
+                  </span>
                 </div>
-              </div>
-
-              <h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-[3.5rem]">
-                Precision blood matching,{" "}
-                <span className="text-primary">saving lives</span> faster.
-              </h1>
-
-              <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-                Connect donors with recipients instantly. AI-powered
-                compatibility matching, real-time inventory tracking, and
-                intelligent demand forecasting — all in one secure platform.
-              </p>
-
-              <div className="mt-10 flex gap-3">
                 <Button
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  size="lg"
-                  asChild
+                  size="sm"
+                  variant="outline"
+                  className={`h-8 px-3 text-xs bg-white ${isSimulating ? "opacity-50 cursor-not-allowed" : "hover:bg-red-50 hover:text-red-700 hover:border-red-200"}`}
+                  onClick={runSimulation}
+                  disabled={isSimulating}
                 >
-                  <Link to="/register">
-                    Become a Donor
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
+                  <RefreshCw
+                    className={`mr-2 h-3 w-3 ${isSimulating ? "animate-spin" : ""}`}
+                  />
+                  {isSimulating ? "Processing..." : "Run Simulation"}
                 </Button>
               </div>
-            </div>
 
-            {/* Right — Compatibility Widget */}
-            <div ref={heroWidgetRef}>
-              <div className="rounded-2xl border border-divider bg-card p-8 shadow-sm">
-                <div className="mb-6 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Heart className="h-4 w-4 text-primary" />
-                  Blood Type Compatibility Checker
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {bloodTypes.map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setActiveBloodType(type)}
-                      className={`rounded-lg py-3 font-display text-sm font-semibold transition-all duration-200 ${
-                        activeBloodType === type
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "bg-neutral-200 text-foreground hover:bg-primary hover:text-primary-foreground"
-                      }`}
-                    >
-                      {type}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-6 rounded-xl bg-muted p-5">
-                  <p className="text-sm text-muted-foreground">
-                    Compatible donors for{" "}
-                    <span className="font-semibold text-foreground">
-                      {activeBloodType}
-                    </span>
-                  </p>
-                  <div ref={compatRef} className="mt-3 flex flex-wrap gap-2">
-                    {compatibleDonors[activeBloodType]?.map((type) => (
-                      <span
-                        key={type}
-                        data-compat-badge
-                        className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-3 py-1.5 font-display text-sm font-semibold text-primary"
+              <div className="h-64 flex items-end justify-between gap-1 px-2 relative bg-slate-50/50 rounded-lg pt-4 pb-0 border border-slate-100 overflow-hidden">
+                <div
+                  className={`absolute inset-0 flex items-end transition-opacity duration-1000 ${chartData.length === 30 ? "opacity-100" : "opacity-0"}`}
+                >
+                  <svg
+                    className="w-full h-full preserve-3d"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                  >
+                    <path
+                      d="M0,80 Q25,60 50,70 T100,20 L100,100 L0,100 Z"
+                      fill="url(#ci-gradient)"
+                      opacity="0.4"
+                    />
+                    <defs>
+                      <linearGradient
+                        id="ci-gradient"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
                       >
-                        {type}
-                      </span>
-                    ))}
-                  </div>
+                        <stop offset="0%" stopColor="#fee2e2" />
+                        <stop
+                          offset="100%"
+                          stopColor="#ffffff"
+                          stopOpacity="0"
+                        />
+                      </linearGradient>
+                    </defs>
+                  </svg>
                 </div>
+
+                <div className="absolute inset-0 flex flex-col justify-between py-2 pointer-events-none opacity-20">
+                  <div className="w-full h-px bg-slate-300"></div>
+                  <div className="w-full h-px bg-slate-300"></div>
+                  <div className="w-full h-px bg-slate-300"></div>
+                  <div className="w-full h-px bg-slate-300"></div>
+                </div>
+
+                {Array.from({ length: 30 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="relative flex-1 group flex justify-center h-full items-end z-10"
+                  >
+                    {chartData[i] !== undefined ? (
+                      <div
+                        className="w-full bg-red-100 rounded-t-sm transition-all duration-300 hover:bg-red-200 relative group-hover:z-20"
+                        style={{ height: `${chartData[i]}%` }}
+                      >
+                        <div
+                          className="absolute bottom-0 w-full bg-red-600 rounded-t-sm transition-all duration-300 group-hover:bg-red-700 shadow-sm"
+                          style={{ height: `${chartData[i] * 0.7}%` }}
+                        />
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] py-1 px-2 rounded whitespace-nowrap pointer-events-none z-30">
+                          Day {i + 1}: {chartData[i]} units
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full h-0"></div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between text-xs text-slate-500 font-medium">
+                <span>Model: Simulation_Only.model</span>
+                <span className="flex items-center gap-1.5">
+                  Status:
+                  {isSimulating ? (
+                    <span className="text-amber-600 animate-pulse">
+                      Running step {chartData.length}/30
+                    </span>
+                  ) : (
+                    <span className="text-green-600">Idle (Ready)</span>
+                  )}
+                </span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="border-t border-divider py-24">
-        <div className="mx-auto max-w-6xl px-6">
-          <div
-            ref={stepsHeaderRef}
-            className="mx-auto mb-16 max-w-2xl text-center"
-          >
-            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              <Clock className="h-3 w-3" />
-              Simple Process
-            </span>
-            <h2 className="text-3xl font-bold tracking-tight">
-              From sign-up to saving lives
+      {/* Core Modules Section */}
+      <section id="modules" className="py-24 bg-white relative">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="text-center mb-16 max-w-2xl mx-auto">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">
+              Three-Tiered System Architecture
             </h2>
-            <p className="mt-4 text-muted-foreground">
-              Three steps. That's all it takes to become part of a life-saving
-              network.
+            <p className="text-slate-600 text-lg">
+              A streamlined workflow transforming raw CSV/XLSX historical logs
+              into executive-ready PDF summaries.
             </p>
           </div>
 
-          <div ref={stepsGridRef} className="grid gap-8 md:grid-cols-3">
-            {steps.map((step, i) => (
-              <div key={step.num} className="relative">
-                {/* Connector line */}
-                {i < steps.length - 1 && (
-                  <div className="absolute top-10 left-[calc(50%+2rem)] hidden h-px w-[calc(100%-4rem)] bg-divider md:block" />
-                )}
-                <div className="group rounded-2xl border border-divider bg-card p-8 text-center transition-shadow duration-300 hover:shadow-md">
-                  <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <step.icon className="h-5 w-5" />
-                  </div>
-                  <span className="font-display text-xs font-bold uppercase tracking-widest text-primary">
-                    Step {step.num}
-                  </span>
-                  <h3 className="mt-2 font-display text-lg font-semibold">
-                    {step.title}
-                  </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                    {step.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Roles Section */}
-      <section className="border-t border-divider bg-white py-24">
-        <div className="mx-auto max-w-6xl px-6">
-          <div
-            ref={rolesHeaderRef}
-            className="mx-auto mb-16 max-w-2xl text-center"
-          >
-            <h2 className="text-3xl font-bold tracking-tight">
-              Three pathways to impact
-            </h2>
-            <p className="mt-4 text-muted-foreground">
-              Whether you donate, receive, or manage — SalinDugo provides the
-              tools you need.
-            </p>
-          </div>
-
-          <div ref={roleCardsRef} className="grid gap-6 md:grid-cols-3">
+          <div className="grid md:grid-cols-3 gap-8">
             {[
               {
-                icon: Heart,
-                title: "Donors",
-                subtitle: "Give the gift of life",
-                items: [
-                  "Find nearby donation centers",
-                  "Schedule and track donations",
-                  "View your impact history",
-                ],
-                cta: "Start Donating",
-                href: "/donor",
-              },
-              {
-                icon: Plus,
-                title: "Recipients",
-                subtitle: "Find compatible blood quickly",
-                items: [
-                  "Instant compatibility matching",
-                  "Locate centers with available stock",
-                  "Secure, verified requests",
-                ],
-                cta: "Request Blood",
-                href: "/register",
+                icon: UploadCloud,
+                title: "1. Bulk Data Import",
+                desc: "The single entry point for historical data. Validates required schema, handles Excel serial conversions, and performs atomic bulk-inserts via PostgreSQL transactions.",
+                color: "bg-blue-50 text-blue-700",
+                hoverBorder: "hover:border-blue-200 hover:shadow-blue-900/5",
               },
               {
                 icon: BarChart3,
-                title: "Blood Centers",
-                subtitle: "Enterprise-grade management",
-                items: [
-                  "Real-time inventory dashboards",
-                  "AI-driven demand forecasting",
-                  "Regional analytics and insights",
-                ],
-                cta: "Register Center",
-                href: "/register",
+                title: "2. Prediction Dashboard",
+                desc: "The operational core. Connects to the FastAPI forecasting service to visualize 30-day predictive horizons. Features real-time KPIs including YoY Demand Comparison.",
+                color: "bg-red-50 text-red-700",
+                hoverBorder: "hover:border-red-200 hover:shadow-red-900/5",
               },
-            ].map((role) => (
+              {
+                icon: Printer,
+                title: "3. Print Report Engine",
+                desc: "Compiles the raw forecast data into an A4 PDF-ready executive summary. Automatically generates natural-language synopses and cleanly formatted tables.",
+                color: "bg-emerald-50 text-emerald-700",
+                hoverBorder:
+                  "hover:border-emerald-200 hover:shadow-emerald-900/5",
+              },
+            ].map((mod, i) => (
               <div
-                key={role.title}
-                className="group rounded-2xl border border-divider bg-card p-8 transition-shadow duration-300 hover:shadow-md"
+                key={i}
+                className={`group bg-white border border-slate-200 rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${mod.hoverBorder} relative overflow-hidden`}
               >
-                <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <role.icon className="h-5 w-5" />
-                </div>
-                <h3 className="font-display text-xl font-semibold">
-                  {role.title}
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {role.subtitle}
-                </p>
-                <ul className="mt-6 space-y-3">
-                  {role.items.map((item) => (
-                    <li
-                      key={item}
-                      className="flex items-start gap-2 text-sm text-foreground/80"
-                    >
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <svg
-                          width="10"
-                          height="8"
-                          viewBox="0 0 10 8"
-                          fill="none"
-                        >
-                          <path
-                            d="M1 4L3.5 6.5L9 1"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-8">
-                  <Button
-                    size="sm"
-                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    asChild
-                  >
-                    <Link to={role.href}>
-                      {role.cta}
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="py-24">
-        <div className="mx-auto max-w-6xl px-6">
-          <div
-            ref={featuresHeaderRef}
-            className="mx-auto mb-16 max-w-2xl text-center"
-          >
-            <h2 className="text-3xl font-bold tracking-tight">
-              Built for healthcare precision
-            </h2>
-            <p className="mt-4 text-muted-foreground">
-              Every feature designed with clinical accuracy and operational
-              efficiency in mind.
-            </p>
-          </div>
-
-          <div
-            ref={featuresGridRef}
-            className="grid gap-px overflow-hidden rounded-2xl border border-divider bg-divider md:grid-cols-3"
-          >
-            {[
-              {
-                icon: Zap,
-                title: "Instant Matching",
-                desc: "A smart matching algorithm identifies blood centers that can efficiently fulfill requests and have a demand for your blood type.",
-              },
-              {
-                icon: TrendingUp,
-                title: "Demand Forecasting",
-                desc: "Predictive analytics anticipate supply needs before shortages occur.",
-              },
-              {
-                icon: Shield,
-                title: "Healthcare-Grade Security",
-                desc: "End-to-end encryption data protection protocols.",
-              },
-            ].map((feature) => (
-              <div key={feature.title} className="bg-card p-10">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
-                  <feature.icon className="h-5 w-5" />
-                </div>
-                <h3 className="font-display text-lg font-semibold">
-                  {feature.title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {feature.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Demand Forecasting Showcase */}
-      <section className="border-t border-divider bg-neutral/40 py-24">
-        <div className="mx-auto max-w-6xl px-6">
-          <div
-            ref={forecastHeaderRef}
-            className="mx-auto mb-16 max-w-2xl text-center"
-          >
-            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-primary px-3 py-1 text-xs font-medium text-white">
-              <TrendingUp className="h-3 w-3" />
-              Predictive Intelligence
-            </span>
-            <h2 className="text-3xl font-bold tracking-tight">
-              Demand forecasting for smarter decisions
-            </h2>
-            <p className="mt-4 text-muted-foreground">
-              AI-driven analytics help blood centers anticipate demand, optimize
-              inventory, and prevent shortages before they happen.
-            </p>
-          </div>
-
-          {/* Flow explanation */}
-          <div className="mx-auto mb-16 max-w-4xl">
-            <div className="grid gap-0 md:grid-cols-4">
-              {[
-                {
-                  step: "01",
-                  label: "Collect",
-                  detail:
-                    "Historical donation records, seasonal trends, and regional health data are continuously ingested into the system.",
-                },
-                {
-                  step: "02",
-                  label: "Analyze",
-                  detail:
-                    "Machine learning models process the data to identify patterns, correlations, and emerging demand signals.",
-                },
-                {
-                  step: "03",
-                  label: "Predict",
-                  detail:
-                    "The system generates demand forecasts per blood type, per region — days or weeks before shortages could occur.",
-                },
-                {
-                  step: "04",
-                  label: "Act",
-                  detail:
-                    "Blood centers receive actionable alerts and recommendations to rebalance inventory and mobilize donors proactively.",
-                },
-              ].map((item, i) => (
+                <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10" />
                 <div
-                  key={item.step}
-                  className="relative flex flex-col items-center text-center px-4 py-6"
+                  className={`h-14 w-14 rounded-xl flex items-center justify-center mb-6 transition-transform duration-300 group-hover:scale-110 ${mod.color}`}
                 >
-                  {i < 3 && (
-                    <div className="absolute right-0 top-1/2 hidden h-px w-full -translate-y-1/2 md:block">
-                      <div className="ml-auto h-px w-1/2 bg-gradient-to-r from-transparent to-primary/30" />
-                    </div>
-                  )}
-                  <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary  font-display text-sm font-bold text-white">
-                    {item.step}
-                  </span>
-                  <h4 className="font-display text-sm font-semibold uppercase tracking-wider text-foreground">
-                    {item.label}
-                  </h4>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    {item.detail}
-                  </p>
+                  <mod.icon className="h-7 w-7" />
                 </div>
-              ))}
+                <h3 className="text-xl font-bold text-slate-900 mb-3">
+                  {mod.title}
+                </h3>
+                <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                  {mod.desc}
+                </p>
+                <div className="flex items-center text-sm font-semibold text-slate-900 opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                  Explore module <ChevronRight className="ml-1 h-4 w-4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Role-Based Tabs */}
+      {/* Role-Based Cards (Optimized for 2 Roles) */}
+      <section className="py-24 bg-slate-50 relative border-y border-slate-200">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 mb-4 text-red-700 font-semibold text-sm tracking-wide uppercase">
+              <Users className="h-4 w-4" /> Built For Teams
+            </div>
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">
+              Empowering Every Decision Maker
+            </h2>
+            <p className="text-slate-600 max-w-2xl mx-auto">
+              Different roles require different intelligence. SalinDugo
+              structures complex machine learning outputs into actionable
+              insights for the whole team.
+            </p>
+          </div>
+
+          {/* 2-Column Grid Layout */}
+          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            {roles.map((role) => {
+              const Icon = role.icon;
+              return (
+                <div
+                  key={role.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm hover:shadow-lg transition-shadow duration-300 flex flex-col group"
+                >
+                  <div className="h-14 w-14 bg-red-50 border border-red-100 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <Icon className="h-7 w-7 text-red-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-slate-900 mb-3">
+                    {role.title}
+                  </h3>
+                  <p className="text-slate-600 leading-relaxed mb-8 flex-grow">
+                    {role.desc}
+                  </p>
+
+                  <ul className="space-y-4 mt-auto pt-6 border-t border-slate-100">
+                    {role.benefits.map((benefit, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center gap-3 text-sm font-medium text-slate-800"
+                      >
+                        <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        {benefit}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Forecasting Engine Detail */}
+      <section
+        id="engine"
+        className="py-24 bg-white border-b border-slate-200 relative overflow-hidden"
+      >
+        <div className="absolute right-0 top-0 w-1/2 h-full bg-gradient-to-l from-slate-50/50 to-transparent pointer-events-none" />
+
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="flex flex-col lg:flex-row gap-16 items-center">
+            {/* Left Content */}
+            <div className="lg:w-1/2 relative z-10">
+              <div className="inline-flex items-center gap-2 mb-4 text-red-700 font-semibold text-sm tracking-wide uppercase">
+                <Network className="h-4 w-4" /> Powered by XGBoost
+              </div>
+              <h2 className="text-4xl font-bold text-slate-900 mb-6 tracking-tight">
+                The Forecasting Engine
+              </h2>
+              <p className="text-slate-600 text-lg mb-10 leading-relaxed">
+                SalinDugo utilizes a custom implementation of XGBoost tailored
+                for the zero-inflated nature of healthcare time-series data. The
+                model computes 24 rolling and lag features to project 30 days
+                into the future.
+              </p>
+
+              <div className="space-y-3">
+                {[
+                  {
+                    icon: Target,
+                    title: "Two-Stage Soft Gating",
+                    desc: "A binary classifier prevents bias toward zero on intermittent blood types by gating the regressor.",
+                  },
+                  {
+                    icon: Activity,
+                    title: "Residual-Based Confidence Intervals",
+                    desc: "Outputs 80% and 95% CI bands by computing the standard deviation of out-of-sample residuals.",
+                  },
+                  {
+                    icon: TrendingUp,
+                    title: "Recursive Multi-Step Forecasting",
+                    desc: "Predictions feed back into the feature set, recalibrating lag patterns step-by-step.",
+                  },
+                ].map((feature, i) => (
+                  <div
+                    key={i}
+                    className={`p-4 rounded-xl cursor-pointer border transition-all duration-300 flex gap-4 ${activeEngineTab === i ? "bg-slate-50 border-red-200 shadow-md shadow-red-900/5" : "bg-transparent border-transparent hover:bg-slate-50/50"}`}
+                    onMouseEnter={() => setActiveEngineTab(i)}
+                  >
+                    <div
+                      className={`mt-1 h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${activeEngineTab === i ? "bg-red-100 text-red-700" : "bg-slate-200 text-slate-500"}`}
+                    >
+                      <feature.icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4
+                        className={`font-bold transition-colors ${activeEngineTab === i ? "text-slate-900" : "text-slate-700"}`}
+                      >
+                        {feature.title}
+                      </h4>
+                      <p
+                        className={`text-sm mt-1 transition-colors ${activeEngineTab === i ? "text-slate-600" : "text-slate-500"}`}
+                      >
+                        {feature.desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right Academic Backtest Metrics Visual */}
+            <div className="lg:w-1/2 w-full">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xl shadow-slate-200/50 relative group">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-400 to-red-700 rounded-t-2xl"></div>
+
+                <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-6">
+                  <div>
+                    <h3 className="font-bold text-xl text-slate-900">
+                      Scientific Validation
+                    </h3>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Systematic Backtest Evaluation
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-200">
+                    <Activity className="h-3 w-3" />
+                    Evaluates vs Lag-1 Baseline
+                  </div>
+                </div>
+
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                  To prove the model is genuinely learning operational patterns,
+                  the backtest engine dynamically calculates these core error
+                  metrics across all blood types.
+                </p>
+
+                <div className="space-y-3">
+                  {[
+                    {
+                      label: "RMSE (Root Mean Squared Error)",
+                      desc: "Heavily penalizes large variance to ensure the system strictly avoids predicting dangerous stockouts.",
+                    },
+                    {
+                      label: "MAE (Mean Absolute Error)",
+                      desc: "Provides the average magnitude of the forecast error in raw, interpretable blood units (bags).",
+                    },
+                    {
+                      label: "MAPE (Mean Absolute % Error)",
+                      desc: "Offers a scale-free percentage evaluation, allowing fair accuracy comparisons across both rare and common blood types.",
+                    },
+                  ].map((metric, i) => (
+                    <div
+                      key={i}
+                      className="p-4 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="h-2 w-2 rounded-full bg-red-600"></div>
+                        <span className="text-sm font-bold text-slate-800">
+                          {metric.label}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 ml-5 leading-relaxed">
+                        {metric.desc}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="border-t border-divider">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <div
-            ref={ctaRef}
-            className="rounded-2xl bg-primary p-12 text-center md:p-16"
-          >
-            <h2 className="font-display text-3xl font-bold text-primary-foreground">
-              Ready to make an impact?
+      {/* Interactive Technical FAQ */}
+      <section className="py-24 bg-slate-50 relative">
+        <div className="mx-auto max-w-3xl px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">
+              Technical Documentation FAQ
             </h2>
-            <p className="mx-auto mt-4 max-w-lg text-primary-foreground/70">
-              Join thousands of donors and healthcare centers using SalinDugo to
-              connect critical blood supply with those who need it most.
+            <p className="text-slate-600">
+              Answers to common methodological questions from the thesis
+              defense.
             </p>
-            <div className="mt-10 flex flex-wrap justify-center gap-3">
-              <div className="flex gap-4">
-                <Button
-                  size="lg"
-                  className="bg-white text-red-700 hover:bg-gray-100 flex items-center gap-2 font-semibold"
-                  asChild
+          </div>
+
+          <div className="space-y-3">
+            {faqs.map((faq, i) => (
+              <div
+                key={i}
+                className={`border rounded-xl transition-all duration-300 overflow-hidden ${openFaq === i ? "border-red-200 bg-red-50/30" : "border-slate-200 bg-white hover:border-slate-300"}`}
+              >
+                <button
+                  className="w-full text-left px-6 py-4 flex justify-between items-center font-semibold text-slate-900 focus:outline-none"
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
                 >
-                  <Link to="/register">
-                    Start Donating
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
+                  {faq.q}
+                  <ChevronDown
+                    className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openFaq === i ? "rotate-180 text-red-600" : ""}`}
+                  />
+                </button>
+                <div
+                  className={`px-6 text-slate-600 text-sm leading-relaxed transition-all duration-300 ease-in-out ${openFaq === i ? "max-h-48 pb-5 opacity-100" : "max-h-0 opacity-0 py-0"}`}
+                >
+                  {faq.a}
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-divider bg-primary py-16">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="grid gap-10 md:grid-cols-4">
-            {/* Brand */}
-            <div className="md:col-span-1">
-              <Link to="/" className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary border-white">
-                  <Heart className="h-4 w-4 text-white" />
-                </div>
-                <span className="font-display text-lg font-semibold tracking-tight text-primary-foreground">
-                  SalinDugo
-                </span>
-              </Link>
-              <p className="mt-4 text-sm leading-relaxed text-primary-foreground/60">
-                Precision blood matching platform connecting donors, recipients,
-                and healthcare centers through AI-powered intelligence.
-              </p>
+      <footer className="bg-white border-t border-slate-200 py-12">
+        <div className="mx-auto max-w-7xl px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-2 group cursor-pointer">
+            <div className="h-8 w-8 bg-red-100 rounded flex items-center justify-center group-hover:bg-red-200 transition-colors">
+              <Droplets className="h-5 w-5 text-red-700" />
             </div>
-
-            {/* Platform */}
-            <div>
-              <h4 className="font-display text-sm font-semibold text-primary-foreground">
-                Platform
-              </h4>
-              <ul className="mt-4 space-y-2.5">
-                {[
-                  "Donor Portal",
-                  "Recipient Matching",
-                  "Blood Center Dashboard",
-                  "Demand Forecasting",
-                ].map((item) => (
-                  <li key={item}>
-                    <span className="text-sm text-primary-foreground/50 hover:text-primary-foreground/80 transition-colors cursor-pointer">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Resources */}
-            <div>
-              <h4 className="font-display text-sm font-semibold text-primary-foreground">
-                Resources
-              </h4>
-              <ul className="mt-4 space-y-2.5">
-                {[
-                  "Documentation",
-                  "API Reference",
-                  "Blood Type Guide",
-                  "Safety Standards",
-                ].map((item) => (
-                  <li key={item}>
-                    <span className="text-sm text-primary-foreground/50 hover:text-primary-foreground/80 transition-colors cursor-pointer">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <h4 className="font-display text-sm font-semibold text-primary-foreground">
-                Company
-              </h4>
-              <ul className="mt-4 space-y-2.5">
-                {[
-                  "About Us",
-                  "Contact",
-                  "Privacy Policy",
-                  "Terms of Service",
-                ].map((item) => (
-                  <li key={item}>
-                    <span className="text-sm text-primary-foreground/50 hover:text-primary-foreground/80 transition-colors cursor-pointer">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <span className="font-bold text-slate-900 tracking-tight">
+              SalinDugo
+            </span>
           </div>
-
-          <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-primary-foreground/10 pt-8 md:flex-row">
-            <p className="text-xs text-primary-foreground/40">
-              © 2025 SalinDugo. All rights reserved. Saving lives through
-              intelligent blood matching.
-            </p>
-            <div className="flex items-center gap-1.5 text-xs text-primary-foreground/40">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-              Systems operational
-            </div>
+          <p className="text-sm text-slate-500 text-center md:text-left">
+            Blood Demand Forecasting and Inventory Planning Platform.{" "}
+            <br className="md:hidden" />
+          </p>
+          <div className="flex gap-4 text-sm font-medium text-slate-500">
+            <a
+              href="https://github.com/warren-wacko/SalinDugo"
+              className="hover:text-red-700 transition-colors"
+            >
+              Github
+            </a>
           </div>
         </div>
       </footer>
