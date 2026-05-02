@@ -733,7 +733,7 @@ export default function DemandForecastingTab({ hospitalId }) {
         </div>
       )}
       {/* PRIMARY FORECAST SECTION */}
-      <div>
+      <div className="space-y-6">
         {mode === "backtest" && (
           <>
             <ChartCardWithIcon
@@ -1410,22 +1410,21 @@ export default function DemandForecastingTab({ hospitalId }) {
         )}
       </div>
 
-      <ChartCardWithIcon
-        icon={Calendar}
-        title="30-Day Demand Budget by Blood Type"
-        description="Forecasted total demand for planning"
-      >
-        <DemandBudgetCard
-          demandBudget30Days={demandBudget30Days}
-          rankedBudget={rankedBudget}
-          trendByBloodType={trendByBloodType} // 👈 ADD THIS
-          BLOOD_TYPES={BLOOD_TYPES}
-        />
-      </ChartCardWithIcon>
-
       {/* PROJECTION & TRENDS SECTION */}
       {mode === "live" && (
         <div className="grid grid-cols-1 gap-6">
+          <ChartCardWithIcon
+            icon={Calendar}
+            title="30-Day Demand Budget by Blood Type"
+            description="Forecasted total demand for planning"
+          >
+            <DemandBudgetCard
+              demandBudget30Days={demandBudget30Days}
+              rankedBudget={rankedBudget}
+              trendByBloodType={trendByBloodType} // 👈 ADD THIS
+              BLOOD_TYPES={BLOOD_TYPES}
+            />
+          </ChartCardWithIcon>
           {/* BLOOD TYPE CONTRIBUTION */}
           <ChartCardWithIcon
             icon={Droplet}
