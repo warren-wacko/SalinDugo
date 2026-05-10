@@ -8,6 +8,7 @@ import {
   CircleHelp,
   Droplets,
   HeartHandshake,
+  History,
   KeyRound,
   MapPin,
   Printer,
@@ -22,6 +23,7 @@ const DemandForecastingTab = lazy(
   () => import("../components/DemandForecastingTab"),
 );
 const ForecastReportTab = lazy(() => import("../components/ForecastReportTab"));
+const DataAuditTab = lazy(() => import("../components/DataAuditTab"));
 
 import BloodDropLoader from "../../../utils/bloodDropLoader";
 import { AuthContext } from "../../../context/AuthContext";
@@ -55,6 +57,12 @@ export default function HospitalDashboard() {
       label: "Import Data",
       description: "Upload inventory records",
       icon: Upload,
+    },
+    {
+      id: "audit",
+      label: "Data Audit",
+      description: "Trace & revert uploads",
+      icon: History,
     },
   ];
 
@@ -272,6 +280,12 @@ export default function HospitalDashboard() {
                 )}
 
                 {activeTab === "import" && <ImportData />}
+
+                {activeTab === "audit" && (
+                  <Suspense fallback={<BloodDropLoader />}>
+                    <DataAuditTab />
+                  </Suspense>
+                )}
               </div>
             </div>
           </div>

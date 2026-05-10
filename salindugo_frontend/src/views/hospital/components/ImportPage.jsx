@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import api from "../../../api/axios";
@@ -13,6 +13,8 @@ import {
   Loader2,
   Table2,
   Upload,
+  Clock,
+  UserCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 export default function ImportData() {
   const navigate = useNavigate();
@@ -33,6 +36,10 @@ export default function ImportData() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [uploadedBy, setUploadedBy] = useState(
+    () => sessionStorage.getItem("salindugo_uploaded_by") || "",
+  );
+  const [todayStatus, setTodayStatus] = useState(null);
   const fileInputRef = useRef(null);
 
   // Constants specific to Blood Requests
@@ -42,6 +49,20 @@ export default function ImportData() {
     "units_needed",
     "status",
   ];
+
+  const fetchTodayStatus = async () => {
+    try {
+      const res = await api.get("/api/import/today-status");
+      setTodayStatus(res.data);
+    } catch (err) {
+      // Silent — status banner is informational, not critical
+      setTodayStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchTodayStatus();
+  }, []);
 
   const handleFileChange = async (e) => {
     const selected = e.target.files && e.target.files[0];
@@ -81,8 +102,14 @@ export default function ImportData() {
       return;
     }
 
+    if (!uploadedBy.trim()) {
+      setError("Please enter your name so we can trace this upload");
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("uploaded_by", uploadedBy.trim());
 
     try {
       setLoading(true);
@@ -94,12 +121,14 @@ export default function ImportData() {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      sessionStorage.setItem("salindugo_uploaded_by", uploadedBy.trim());
       setSuccess(true);
       setFile(null);
       setPreview([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+      fetchTodayStatus();
     } catch (err) {
       setError(
         axios.isAxiosError(err) && err.response?.data?.message
@@ -109,6 +138,16 @@ export default function ImportData() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   };
 
   return (
@@ -135,6 +174,49 @@ export default function ImportData() {
                 </div>
               </div>
             </div>
+
+            {/* SHIFT-CHANGE STATUS BANNER */}
+            {todayStatus && todayStatus.uploaded_today ? (
+              <Alert className="border-green-200 bg-green-50 text-green-800">
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
+                  <span className="font-semibold">
+                    Data already uploaded today.
+                  </span>{" "}
+                  {todayStatus.today_batches.length} upload
+                  {todayStatus.today_batches.length === 1 ? "" : "s"} so far —
+                  latest by{" "}
+                  <b>
+                    {todayStatus.today_batches[0].uploaded_by_name ||
+                      "someone"}
+                  </b>{" "}
+                  at {formatTime(todayStatus.today_batches[0].created_at)} (
+                  {todayStatus.today_batches[0].row_count} rows). Check the{" "}
+                  <i>Data Audit</i> tab before uploading again.
+                </AlertDescription>
+              </Alert>
+            ) : todayStatus ? (
+              <Alert className="border-yellow-200 bg-yellow-50 text-yellow-800">
+                <Clock className="h-4 w-4" />
+                <AlertDescription>
+                  <span className="font-semibold">
+                    No upload yet today.
+                  </span>{" "}
+                  {todayStatus.latest_batch ? (
+                    <>
+                      Last upload was by{" "}
+                      <b>
+                        {todayStatus.latest_batch.uploaded_by_name ||
+                          "someone"}
+                      </b>{" "}
+                      on {formatTime(todayStatus.latest_batch.created_at)}.
+                    </>
+                  ) : (
+                    <>No previous uploads found.</>
+                  )}
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             <Card className="overflow-hidden border-border bg-card shadow-sm">
               <CardHeader className="border-b border-border bg-background/70">
@@ -189,6 +271,29 @@ export default function ImportData() {
                       </li>
                     </ul>
                   </div>
+                </div>
+
+                {/* UPLOADED BY — required for trace */}
+                <div className="rounded-md border border-border bg-background p-4">
+                  <label
+                    htmlFor="uploaded_by"
+                    className="flex items-center gap-2 text-sm font-semibold text-foreground"
+                  >
+                    <UserCircle2 className="h-4 w-4 text-primary" />
+                    Your name (for trace)
+                  </label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Since the hospital account is shared, your name is recorded
+                    with this upload so other personnel can see who added it.
+                  </p>
+                  <Input
+                    id="uploaded_by"
+                    value={uploadedBy}
+                    onChange={(e) => setUploadedBy(e.target.value)}
+                    placeholder="e.g., Maria Santos"
+                    className="mt-3"
+                    maxLength={120}
+                  />
                 </div>
 
                 <label className="block">
@@ -267,7 +372,7 @@ export default function ImportData() {
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button
                     onClick={handleUpload}
-                    disabled={!file || loading}
+                    disabled={!file || loading || !uploadedBy.trim()}
                     className="h-11 gap-2 sm:min-w-44"
                   >
                     {loading ? (
@@ -310,6 +415,11 @@ export default function ImportData() {
                 <div className="flex gap-3">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
                   Remove blank rows before uploading.
+                </div>
+                <div className="flex gap-3">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  Check the Data Audit tab if you're unsure whether today's
+                  data was already uploaded.
                 </div>
               </CardContent>
             </Card>

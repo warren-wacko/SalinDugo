@@ -1,4 +1,11 @@
-import { useEffect, useState, useMemo } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useContext,
+  createContext,
+} from "react";
 import {
   BarChart,
   Bar,
@@ -38,6 +45,10 @@ import {
   Radar,
   ShieldAlert,
   Calendar,
+  Printer,
+  Check,
+  Square,
+  X,
 } from "lucide-react";
 import { ForecastTooltip } from "./tooltips/ForecastToolTip";
 import { BacktestTooltip } from "./tooltips/BacktestToolTip";
@@ -51,6 +62,71 @@ import HighDemandStreakAlert from "./DemandComponents/HighDemandStreakAlert";
 import api from "../../../api/axios";
 import BloodDropLoader from "../../../utils/bloodDropLoader";
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+// =====================================================
+// PRINT SELECTION — lets the user pick individual charts
+// to include in a printout (separate from the full
+// Print Report tab). Context lets each chart card opt
+// into the checkbox UI without prop drilling.
+// =====================================================
+const PrintSelectionContext = createContext(null);
+
+function PrintableSelector({ id, note, children }) {
+  const ctx = useContext(PrintSelectionContext);
+
+  if (!ctx) return <>{children}</>;
+
+  const { selectionMode, selectedIds, toggle } = ctx;
+  const selected = selectedIds.has(id);
+
+  return (
+    <div
+      data-printable="true"
+      data-print-selected={selected ? "true" : undefined}
+      className={`relative transition-all ${
+        selectionMode
+          ? selected
+            ? "rounded-md ring-2 ring-primary ring-offset-2 ring-offset-background"
+            : "rounded-md ring-1 ring-border ring-offset-2 ring-offset-background"
+          : ""
+      }`}
+    >
+      {children}
+
+      {selectionMode && (
+        <button
+          type="button"
+          onClick={() => toggle(id)}
+          data-no-print="true"
+          aria-pressed={selected}
+          aria-label={
+            selected ? "Deselect chart for printing" : "Select chart for printing"
+          }
+          className={`absolute right-3 top-3 z-30 flex h-9 w-9 items-center justify-center rounded-md border-2 shadow-md transition-colors ${
+            selected
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-card text-muted-foreground hover:border-primary hover:text-primary"
+          }`}
+        >
+          {selected ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Square className="h-4 w-4" />
+          )}
+        </button>
+      )}
+
+      {selectionMode && note && (
+        <div
+          data-no-print="true"
+          className="absolute left-3 top-3 z-30 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary shadow-sm"
+        >
+          {note}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function KPICard({ title, value, description, icon: Icon, tone = "neutral" }) {
   const toneStyles = {
@@ -127,6 +203,82 @@ export default function DemandForecastingTab({ hospitalId }) {
   const [selectedCI, setSelectedCI] = useState("both");
   const [selectedBacktestCI, setSelectedBacktestCI] = useState("both");
   const [selectedBloodTypeCI, setSelectedBloodTypeCI] = useState("both");
+
+  // ===============================
+  // PRINT SELECTION (per-chart)
+  // ===============================
+  const [printSelectionMode, setPrintSelectionMode] = useState(false);
+  const [selectedPrintIds, setSelectedPrintIds] = useState(() => new Set());
+
+  const togglePrintId = useCallback((id) => {
+    setSelectedPrintIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const printContextValue = useMemo(
+    () => ({
+      selectionMode: printSelectionMode,
+      selectedIds: selectedPrintIds,
+      toggle: togglePrintId,
+    }),
+    [printSelectionMode, selectedPrintIds, togglePrintId],
+  );
+
+  const allPrintIds = useMemo(() => {
+    if (mode === "backtest") {
+      return ["backtest-total", "backtest-by-blood-type"];
+    }
+    return [
+      "total-demand-forecast",
+      "demand-change",
+      "demand-budget",
+      "demand-by-blood-type",
+      "high-demand-streak",
+      "trend-by-blood-type",
+      "forecast-confidence",
+    ];
+  }, [mode]);
+
+  const handleSelectAllPrintables = () => {
+    setSelectedPrintIds(new Set(allPrintIds));
+  };
+
+  const handleClearPrintSelection = () => {
+    setSelectedPrintIds(new Set());
+  };
+
+  const handleCancelPrintMode = () => {
+    setPrintSelectionMode(false);
+    setSelectedPrintIds(new Set());
+  };
+
+  const handlePrintSelected = () => {
+    if (selectedPrintIds.size === 0) return;
+    document.body.classList.add("printing-selected-only");
+    // tiny delay so the browser applies the print CSS before opening the dialog
+    setTimeout(() => window.print(), 50);
+  };
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove("printing-selected-only");
+      setPrintSelectionMode(false);
+      setSelectedPrintIds(new Set());
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => window.removeEventListener("afterprint", handleAfterPrint);
+  }, []);
+
+  // Reset selection whenever the user flips Live ↔ Backtest, since the set
+  // of available charts changes.
+  useEffect(() => {
+    setSelectedPrintIds(new Set());
+    setPrintSelectionMode(false);
+  }, [mode]);
 
   // ===============================
   // FETCH DATA
@@ -613,9 +765,88 @@ export default function DemandForecastingTab({ hospitalId }) {
   }
 
   return (
+    <PrintSelectionContext.Provider value={printContextValue}>
     <div className="w-full space-y-6 bg-[linear-gradient(180deg,oklch(0.99_0_0)_0%,oklch(0.965_0.01_25)_100%)] p-4 sm:p-6 lg:p-8">
+      {/* PRINT-ONLY CSS — applied when body has .printing-selected-only */}
+      <style>{`
+        @media print {
+          /* Hide global chrome (navbar uses <header>, sidebar uses <aside>) */
+          body.printing-selected-only [data-no-print="true"],
+          body.printing-selected-only nav,
+          body.printing-selected-only header,
+          body.printing-selected-only aside {
+            display: none !important;
+          }
+
+          /* CRITICAL: defeat scroll containers, viewport-locked heights, AND
+             padding/margin on every ancestor of a printable. Without the
+             height/overflow part, the h-screen + overflow-y-auto wrapper
+             clamps printing to whatever was visible. Without the padding/
+             margin reset, the outer p-4/py-8 paddings push content past the
+             last page boundary, creating a trailing empty page. */
+          body.printing-selected-only,
+          body.printing-selected-only :has([data-printable="true"]) {
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+
+          /* Flatten any grid/flex container that holds a printable, so
+             page-break-after on the printable items actually works.
+             Browsers ignore page-break on grid/flex children. */
+          body.printing-selected-only div:has(> [data-printable="true"]) {
+            display: block !important;
+            grid-template-columns: none !important;
+            grid-template-rows: none !important;
+            gap: 0 !important;
+          }
+
+          /* Hide unselected printables */
+          body.printing-selected-only [data-printable="true"]:not([data-print-selected="true"]) {
+            display: none !important;
+          }
+
+          /* Each selected printable: fill (almost) one page and center the
+             chart on it. No explicit page-break-after — the min-height plus
+             page-break-inside: avoid is enough to force the next chart onto
+             the next page naturally, without the blank-page side-effect that
+             page-break-after: always causes when the content already fills
+             nearly the whole page. */
+          body.printing-selected-only [data-printable="true"][data-print-selected="true"] {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            align-items: stretch !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 95vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          /* Direct child (the Card) fills width; it'll be centered vertically
+             by the flex parent above. */
+          body.printing-selected-only [data-printable="true"][data-print-selected="true"] > * {
+            width: 100% !important;
+            margin: 0 auto !important;
+          }
+
+          body.printing-selected-only {
+            background: white !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+        }
+      `}</style>
+
       {/* HEADER */}
-      <div className="rounded-md border border-border bg-card px-5 py-5 shadow-sm">
+      <div data-no-print="true" className="rounded-md border border-border bg-card px-5 py-5 shadow-sm">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
@@ -662,9 +893,103 @@ export default function DemandForecastingTab({ hospitalId }) {
         </div>
       </div>
 
+      {/* PRINT-CUSTOM TOOLBAR */}
+      <div
+        data-no-print="true"
+        className={`flex flex-col gap-3 rounded-md border bg-card px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${
+          printSelectionMode
+            ? "sticky top-0 z-40 border-primary/30 bg-primary/5"
+            : "border-border"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-md border ${
+              printSelectionMode
+                ? "border-primary/40 bg-primary/15 text-primary"
+                : "border-primary/20 bg-primary/10 text-primary"
+            }`}
+          >
+            <Printer className="h-4 w-4" />
+          </div>
+          <div>
+            {printSelectionMode ? (
+              <>
+                <p className="text-sm font-semibold text-foreground">
+                  {selectedPrintIds.size} chart
+                  {selectedPrintIds.size === 1 ? "" : "s"} selected
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tap the checkbox on each chart to include it in the printout.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-foreground">
+                  Print specific charts
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Pick exactly which charts to include — for example, just the
+                  O+ confidence interval.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {printSelectionMode ? (
+            <>
+              <button
+                type="button"
+                onClick={handleSelectAllPrintables}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={handleClearPrintSelection}
+                disabled={selectedPrintIds.size === 0}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelPrintMode}
+                className="flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintSelected}
+                disabled={selectedPrintIds.size === 0}
+                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Print
+                {selectedPrintIds.size > 0 ? ` (${selectedPrintIds.size})` : ""}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPrintSelectionMode(true)}
+              className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              <Printer className="h-4 w-4" />
+              Print Custom Charts
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* KPI CARDS - TOP SECTION */}
       {mode === "live" && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div data-no-print="true" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <KPICard
             icon={TrendingUp}
             title="30-Day Total Demand"
@@ -736,6 +1061,7 @@ export default function DemandForecastingTab({ hospitalId }) {
       <div className="space-y-6">
         {mode === "backtest" && (
           <>
+            <PrintableSelector id="backtest-total">
             <ChartCardWithIcon
               icon={TrendingUp}
               title="Total Demand Backtest"
@@ -1056,6 +1382,11 @@ export default function DemandForecastingTab({ hospitalId }) {
                 </div>
               )}
             </ChartCardWithIcon>
+            </PrintableSelector>
+            <PrintableSelector
+              id="backtest-by-blood-type"
+              note={`Currently: ${selectedBacktestBloodType}`}
+            >
             <ChartCardWithIcon
               icon={Droplet}
               title="Backtest by Blood Type"
@@ -1290,11 +1621,13 @@ export default function DemandForecastingTab({ hospitalId }) {
                 </div>
               )}
             </ChartCardWithIcon>
+            </PrintableSelector>
           </>
         )}
         {/* MAIN TREND CHART */}
         {mode === "live" && (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(22rem,0.8fr)]">
+            <PrintableSelector id="total-demand-forecast">
             <ChartCardWithIcon
               icon={TrendingUp}
               title="Total Demand Forecast"
@@ -1362,7 +1695,9 @@ export default function DemandForecastingTab({ hospitalId }) {
                 </AreaChart>
               </ChartContainer>
             </ChartCardWithIcon>
+            </PrintableSelector>
 
+            <PrintableSelector id="demand-change">
             <ChartCardWithIcon
               icon={Activity}
               title="Demand Change"
@@ -1406,6 +1741,7 @@ export default function DemandForecastingTab({ hospitalId }) {
                 </BarChart>
               </ChartContainer>
             </ChartCardWithIcon>
+            </PrintableSelector>
           </div>
         )}
       </div>
@@ -1413,6 +1749,7 @@ export default function DemandForecastingTab({ hospitalId }) {
       {/* PROJECTION & TRENDS SECTION */}
       {mode === "live" && (
         <div className="grid grid-cols-1 gap-6">
+          <PrintableSelector id="demand-budget">
           <ChartCardWithIcon
             icon={Calendar}
             title="30-Day Demand Budget by Blood Type"
@@ -1425,7 +1762,9 @@ export default function DemandForecastingTab({ hospitalId }) {
               BLOOD_TYPES={BLOOD_TYPES}
             />
           </ChartCardWithIcon>
+          </PrintableSelector>
           {/* BLOOD TYPE CONTRIBUTION */}
+          <PrintableSelector id="demand-by-blood-type">
           <ChartCardWithIcon
             icon={Droplet}
             title="Demand by Blood Type"
@@ -1506,11 +1845,15 @@ export default function DemandForecastingTab({ hospitalId }) {
               </LineChart>
             </ChartContainer>
           </ChartCardWithIcon>
+          </PrintableSelector>
 
+          <PrintableSelector id="high-demand-streak">
           <div className="space-y-2">
             <HighDemandStreakAlert streaks={streaks} />
           </div>
+          </PrintableSelector>
 
+          <PrintableSelector id="trend-by-blood-type">
           <ChartCardWithIcon
             icon={GitBranch}
             title="7-Day Demand Trend by Blood Type"
@@ -1521,7 +1864,12 @@ export default function DemandForecastingTab({ hospitalId }) {
               BLOOD_TYPES={BLOOD_TYPES}
             />
           </ChartCardWithIcon>
+          </PrintableSelector>
 
+          <PrintableSelector
+            id="forecast-confidence"
+            note={`Currently: ${selectedForecastBloodType}`}
+          >
           <ChartCardWithIcon
             icon={Activity}
             title="Forecast Confidence Intervals"
@@ -1666,8 +2014,10 @@ export default function DemandForecastingTab({ hospitalId }) {
               </div>
             )}
           </ChartCardWithIcon>
+          </PrintableSelector>
         </div>
       )}
     </div>
+    </PrintSelectionContext.Provider>
   );
 }
