@@ -326,9 +326,14 @@ export default function DataAuditTab() {
     try {
       setLoading(true);
       setError("");
+      // Pass the browser's IANA timezone so "today" is computed in the
+      // user's local time, not the server's UTC.
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const [batchesRes, statusRes] = await Promise.all([
         api.get("/api/import/batches"),
-        api.get("/api/import/today-status"),
+        api.get(
+          `/api/import/today-status?tz=${encodeURIComponent(tz)}`,
+        ),
       ]);
       setBatches(batchesRes.data.batches || []);
       setTodayStatus(statusRes.data || null);

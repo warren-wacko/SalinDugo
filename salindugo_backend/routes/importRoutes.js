@@ -473,18 +473,27 @@ router.delete("/batches/:id", async (req, res) => {
 });
 
 // Today-status: was anything uploaded today, and what was the latest upload?
+// The client passes its IANA timezone (e.g. "Asia/Manila") so the date
+// comparison happens in the user's local "today", not UTC.
 router.get("/today-status", async (req, res) => {
   try {
     const hospital_id = getHospitalId(req);
+
+    // Validate the tz: only allow safe IANA-style characters. Falls back to
+    // UTC if missing or malformed. Postgres will throw on an unknown zone,
+    // which the catch block handles.
+    const rawTz = String(req.query.tz || "UTC");
+    const tz = /^[A-Za-z0-9_+\-/]+$/.test(rawTz) ? rawTz : "UTC";
 
     const todayRes = await pool.query(
       `SELECT batch_id, uploaded_by_name, filename, row_count,
               date_min, date_max, created_at
        FROM import_batches
        WHERE hospital_id = $1
-         AND created_at::date = (NOW() AT TIME ZONE 'UTC')::date
+         AND (created_at AT TIME ZONE $2)::date
+             = (NOW() AT TIME ZONE $2)::date
        ORDER BY created_at DESC`,
-      [hospital_id],
+      [hospital_id, tz],
     );
 
     const latestRes = await pool.query(

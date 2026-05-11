@@ -4,6 +4,7 @@ import axios from "axios";
 import api from "../../../api/axios";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
@@ -15,6 +16,8 @@ import {
   Upload,
   Clock,
   UserCircle2,
+  X,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +43,7 @@ export default function ImportData() {
     () => sessionStorage.getItem("salindugo_uploaded_by") || "",
   );
   const [todayStatus, setTodayStatus] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const fileInputRef = useRef(null);
 
   // Constants specific to Blood Requests
@@ -52,7 +56,13 @@ export default function ImportData() {
 
   const fetchTodayStatus = async () => {
     try {
-      const res = await api.get("/api/import/today-status");
+      // Pass the browser's timezone so "today" is computed in the user's
+      // local time (not the server's UTC), otherwise an upload made at
+      // 2 AM Manila time looks like "yesterday" to the server.
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await api.get(
+        `/api/import/today-status?tz=${encodeURIComponent(tz)}`,
+      );
       setTodayStatus(res.data);
     } catch (err) {
       // Silent — status banner is informational, not critical
@@ -96,17 +106,22 @@ export default function ImportData() {
     URL.revokeObjectURL(url);
   };
 
-  const handleUpload = async () => {
+  // First step: validate inputs, then open the confirmation modal.
+  // The actual POST happens in performUpload once the user confirms.
+  const handleUploadClick = () => {
+    setError("");
     if (!file) {
       setError("Please select a file to upload");
       return;
     }
-
     if (!uploadedBy.trim()) {
       setError("Please enter your name so we can trace this upload");
       return;
     }
+    setShowConfirmModal(true);
+  };
 
+  const performUpload = async () => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("uploaded_by", uploadedBy.trim());
@@ -116,7 +131,6 @@ export default function ImportData() {
       setError("");
       setSuccess(false);
 
-      // Endpoint changed to strictly use 'requests'
       await api.post(`/api/import/requests`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -128,6 +142,7 @@ export default function ImportData() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+      setShowConfirmModal(false);
       fetchTodayStatus();
     } catch (err) {
       setError(
@@ -135,6 +150,7 @@ export default function ImportData() {
           ? err.response.data.message
           : "Upload failed. Please check your file and try again.",
       );
+      setShowConfirmModal(false);
     } finally {
       setLoading(false);
     }
@@ -371,7 +387,7 @@ export default function ImportData() {
 
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button
-                    onClick={handleUpload}
+                    onClick={handleUploadClick}
                     disabled={!file || loading || !uploadedBy.trim()}
                     className="h-11 gap-2 sm:min-w-44"
                   >
@@ -424,6 +440,200 @@ export default function ImportData() {
               </CardContent>
             </Card>
           </aside>
+        </div>
+      </div>
+
+      {showConfirmModal && (
+        <ConfirmUploadModal
+          file={file}
+          uploadedBy={uploadedBy.trim()}
+          todayStatus={todayStatus}
+          loading={loading}
+          onCancel={() => !loading && setShowConfirmModal(false)}
+          onConfirm={performUpload}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmUploadModal({
+  file,
+  uploadedBy,
+  todayStatus,
+  loading,
+  onCancel,
+  onConfirm,
+}) {
+  const alreadyUploaded = todayStatus?.uploaded_today === true;
+  const latestToday = alreadyUploaded ? todayStatus.today_batches?.[0] : null;
+
+  const fileSizeKB = file ? (file.size / 1024).toFixed(1) : "0";
+
+  const formatTime = (iso) => {
+    if (!iso) return "";
+    return new Date(iso).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Dynamic header — color depends on whether already uploaded today */}
+        <div
+          className={`border-b px-6 py-4 ${
+            alreadyUploaded
+              ? "border-destructive/30 bg-destructive/5"
+              : "border-border bg-background/70"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${
+                alreadyUploaded
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-primary/30 bg-primary/10 text-primary"
+              }`}
+            >
+              {alreadyUploaded ? (
+                <ShieldAlert className="h-5 w-5" />
+              ) : (
+                <ClipboardCheck className="h-5 w-5" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-lg font-semibold text-foreground">
+                {alreadyUploaded
+                  ? "Data already imported today"
+                  : "Confirm first import of the day"}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {alreadyUploaded
+                  ? "Please double-check before continuing — uploading again may duplicate data."
+                  : "No upload has been recorded for today yet. Please verify the details below."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={loading}
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              aria-label="Cancel"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          {/* Strong warning banner when already uploaded today */}
+          {alreadyUploaded && latestToday && (
+            <Alert className="border-destructive/30 bg-destructive/5 text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-destructive">
+                <span className="font-semibold">
+                  {todayStatus.today_batches.length} upload
+                  {todayStatus.today_batches.length === 1 ? "" : "s"} already
+                  recorded for today.
+                </span>
+                <br />
+                Most recent: <b>{latestToday.uploaded_by_name || "someone"}</b>
+                {" "}at {formatTime(latestToday.created_at)} —{" "}
+                {latestToday.row_count} rows. If this is the same data,
+                continuing will create duplicate request records.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* What you're about to upload */}
+          <div className="rounded-md border border-border bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              You are about to upload
+            </p>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-muted-foreground">File</span>
+                <span
+                  className="max-w-[60%] truncate font-mono text-foreground"
+                  title={file?.name}
+                >
+                  {file?.name || "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Size</span>
+                <span className="text-foreground">{fileSizeKB} KB</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Uploading as</span>
+                <span className="font-semibold text-foreground">
+                  {uploadedBy || "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Friendly checklist */}
+          <div className="rounded-md border border-border bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Before continuing, confirm
+            </p>
+            <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+              <li className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                The file covers the correct date range.
+              </li>
+              <li className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                Blood types and units look right.
+              </li>
+              <li className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                {alreadyUploaded
+                  ? "This is NOT the same file someone uploaded earlier today."
+                  : "No one else has uploaded today (check the banner above)."}
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border bg-background/70 px-6 py-3">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={loading}
+            className="gap-2"
+          >
+            <X className="h-4 w-4" />
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={loading}
+            variant={alreadyUploaded ? "destructive" : "default"}
+            className="gap-2"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            {loading
+              ? "Uploading..."
+              : alreadyUploaded
+                ? "Upload anyway"
+                : "Confirm upload"}
+          </Button>
         </div>
       </div>
     </div>
