@@ -63,6 +63,20 @@ function StatCard({ title, value, description, icon: Icon, tone = "neutral" }) {
   );
 }
 
+// Match the backend's canonicalNameKey so historical entries that used
+// different orderings ("Ichigo Kurosaki" vs "Kurosaki Ichigo") count as
+// one personnel in the stats.
+function canonicalNameKey(name) {
+  if (!name) return "";
+  return String(name)
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
 function formatDateTime(iso) {
   if (!iso) return "-";
   return new Date(iso).toLocaleString("en-US", {
@@ -375,8 +389,12 @@ export default function DataAuditTab() {
 
   const stats = useMemo(() => {
     const totalRows = batches.reduce((s, b) => s + (b.row_count || 0), 0);
+    // Use canonical key so different orderings/casings of the same name
+    // ("Ichigo Kurosaki" vs "Kurosaki Ichigo") count as one personnel.
     const uniquePeople = new Set(
-      batches.map((b) => b.uploaded_by_name).filter(Boolean),
+      batches
+        .map((b) => canonicalNameKey(b.uploaded_by_name))
+        .filter(Boolean),
     ).size;
     return {
       totalBatches: batches.length,

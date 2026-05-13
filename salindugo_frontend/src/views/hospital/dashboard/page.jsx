@@ -279,7 +279,9 @@ export default function HospitalDashboard() {
                   </Suspense>
                 )}
 
-                {activeTab === "import" && <ImportData />}
+                {activeTab === "import" && (
+                  <ImportData onSwitchToAudit={() => setActiveTab("audit")} />
+                )}
 
                 {activeTab === "audit" && (
                   <Suspense fallback={<BloodDropLoader />}>

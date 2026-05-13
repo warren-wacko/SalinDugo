@@ -12,7 +12,7 @@ import {
   Cell,
   ResponsiveContainer,
 } from "recharts";
-import { Printer, Loader2 } from "lucide-react";
+import { Printer, Loader2, Calendar, RotateCcw } from "lucide-react";
 import api from "../../../api/axios";
 import BloodDropLoader from "../../../utils/bloodDropLoader";
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -63,6 +63,11 @@ export default function ForecastReportTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Date range filter (YYYY-MM-DD strings). Default to the full forecast
+  // range once data loads.
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   useEffect(() => {
     if (!hospitalId) return;
     const fetchData = async () => {
@@ -91,17 +96,68 @@ export default function ForecastReportTab({
     fetchData();
   }, [hospitalId]);
 
+  // When forecast data first arrives (or the hospital changes), default the
+  // date range to the full available forecast window.
+  useEffect(() => {
+    if (!totalForecast.length) return;
+    setStartDate(totalForecast[0].date.slice(0, 10));
+    setEndDate(totalForecast[totalForecast.length - 1].date.slice(0, 10));
+  }, [totalForecast]);
+
+  // Forecast bounds — used to clamp the date inputs.
+  const forecastBounds = useMemo(() => {
+    if (!totalForecast.length) return null;
+    return {
+      min: totalForecast[0].date.slice(0, 10),
+      max: totalForecast[totalForecast.length - 1].date.slice(0, 10),
+    };
+  }, [totalForecast]);
+
+  // Filtered datasets — every downstream metric/chart reads from these.
+  const inRange = (dateStr) => {
+    if (!startDate || !endDate) return true;
+    const d = dateStr.slice(0, 10);
+    return d >= startDate && d <= endDate;
+  };
+
+  const filteredTotal = useMemo(
+    () => totalForecast.filter((d) => inRange(d.date)),
+    [totalForecast, startDate, endDate],
+  );
+
+  const filteredByType = useMemo(
+    () => bloodTypeForecast.filter((d) => inRange(d.date)),
+    [bloodTypeForecast, startDate, endDate],
+  );
+
+  const resetRange = () => {
+    if (!forecastBounds) return;
+    setStartDate(forecastBounds.min);
+    setEndDate(forecastBounds.max);
+  };
+
+  const applyPreset = (days) => {
+    if (!forecastBounds) return;
+    setStartDate(forecastBounds.min);
+    const start = new Date(forecastBounds.min);
+    const end = new Date(start);
+    end.setDate(start.getDate() + days - 1);
+    const max = new Date(forecastBounds.max);
+    const clamped = end > max ? max : end;
+    setEndDate(clamped.toISOString().slice(0, 10));
+  };
+
   const totalChartData = useMemo(() => {
-    return totalForecast.map((d) => ({
+    return filteredTotal.map((d) => ({
       date: d.date,
       label: fmtShortDate(d.date),
       predicted: Number(d.total_predicted_demand || 0),
     }));
-  }, [totalForecast]);
+  }, [filteredTotal]);
 
   const bloodTypePivoted = useMemo(() => {
     const byDate = {};
-    bloodTypeForecast.forEach((item) => {
+    filteredByType.forEach((item) => {
       if (!byDate[item.date]) {
         byDate[item.date] = {
           date: item.date,
@@ -113,11 +169,11 @@ export default function ForecastReportTab({
     return Object.values(byDate).sort(
       (a, b) => new Date(a.date) - new Date(b.date),
     );
-  }, [bloodTypeForecast]);
+  }, [filteredByType]);
 
   const bloodTypeBreakdown = useMemo(() => {
     const grouped = {};
-    bloodTypeForecast.forEach((item) => {
+    filteredByType.forEach((item) => {
       if (!grouped[item.blood_type]) grouped[item.blood_type] = [];
       grouped[item.blood_type].push({
         date: item.date,
@@ -135,11 +191,11 @@ export default function ForecastReportTab({
       });
       return { bloodType: bt, total, avg, peak, days };
     }).sort((a, b) => b.total - a.total);
-  }, [bloodTypeForecast]);
+  }, [filteredByType]);
 
   const dayOfWeekData = useMemo(() => {
     const buckets = WEEKDAYS.map((day) => ({ day, total: 0, count: 0 }));
-    totalForecast.forEach((d) => {
+    filteredTotal.forEach((d) => {
       const dow = new Date(d.date).getDay();
       buckets[dow].total += Number(d.total_predicted_demand || 0);
       buckets[dow].count += 1;
@@ -148,10 +204,10 @@ export default function ForecastReportTab({
       day: b.day,
       avg: b.count > 0 ? b.total / b.count : 0,
     }));
-  }, [totalForecast]);
+  }, [filteredTotal]);
 
   const top5Days = useMemo(() => {
-    return [...totalForecast]
+    return [...filteredTotal]
       .sort(
         (a, b) =>
           Number(b.total_predicted_demand || 0) -
@@ -162,12 +218,12 @@ export default function ForecastReportTab({
         date: d.date,
         total: Number(d.total_predicted_demand || 0),
       }));
-  }, [totalForecast]);
+  }, [filteredTotal]);
 
   const yoy = useMemo(() => {
-    if (!historyTotal.length || !totalForecast.length) return null;
-    const start = new Date(totalForecast[0].date);
-    const end = new Date(totalForecast[totalForecast.length - 1].date);
+    if (!historyTotal.length || !filteredTotal.length) return null;
+    const start = new Date(filteredTotal[0].date);
+    const end = new Date(filteredTotal[filteredTotal.length - 1].date);
     const startLY = new Date(start);
     startLY.setFullYear(start.getFullYear() - 1);
     const endLY = new Date(end);
@@ -181,27 +237,27 @@ export default function ForecastReportTab({
       .reduce((s, d) => s + Number(d.blood_requests || 0), 0);
 
     if (lastYearSum === 0) return null;
-    const forecastSum = totalForecast.reduce(
+    const forecastSum = filteredTotal.reduce(
       (s, d) => s + Number(d.total_predicted_demand || 0),
       0,
     );
     const change = ((forecastSum - lastYearSum) / lastYearSum) * 100;
     return { lastYearSum, forecastSum, change };
-  }, [historyTotal, totalForecast]);
+  }, [historyTotal, filteredTotal]);
 
   const summary = useMemo(() => {
-    if (!totalForecast.length) return null;
-    const values = totalForecast.map((d) =>
+    if (!filteredTotal.length) return null;
+    const values = filteredTotal.map((d) =>
       Number(d.total_predicted_demand || 0),
     );
     const totalDemand = values.reduce((s, v) => s + v, 0);
     const avgDaily = totalDemand / values.length;
     const peak = Math.max(...values);
     const min = Math.min(...values);
-    const peakDay = totalForecast.find(
+    const peakDay = filteredTotal.find(
       (d) => Number(d.total_predicted_demand) === peak,
     );
-    const minDay = totalForecast.find(
+    const minDay = filteredTotal.find(
       (d) => Number(d.total_predicted_demand) === min,
     );
     const variance =
@@ -219,11 +275,11 @@ export default function ForecastReportTab({
       std,
       highDays,
       dateRange: {
-        start: totalForecast[0].date,
-        end: totalForecast[totalForecast.length - 1].date,
+        start: filteredTotal[0].date,
+        end: filteredTotal[filteredTotal.length - 1].date,
       },
     };
-  }, [totalForecast]);
+  }, [filteredTotal]);
 
   const handlePrint = () => window.print();
 
@@ -237,7 +293,7 @@ export default function ForecastReportTab({
   if (error) {
     return <div className="p-6 text-destructive">{error}</div>;
   }
-  if (!totalForecast.length || !summary) {
+  if (!totalForecast.length) {
     return (
       <div className="p-6 text-muted-foreground">
         No forecast data available. Generate a forecast first in the Forecasting
@@ -246,10 +302,12 @@ export default function ForecastReportTab({
     );
   }
 
+  const days = filteredTotal.length;
   const topBT = bloodTypeBreakdown[0];
   const topBTPct =
-    summary.totalDemand > 0 ? (topBT.total / summary.totalDemand) * 100 : 0;
-  const days = totalForecast.length;
+    summary && summary.totalDemand > 0
+      ? (topBT.total / summary.totalDemand) * 100
+      : 0;
   const busiestDow = [...dayOfWeekData].sort((a, b) => b.avg - a.avg)[0];
 
   return (
@@ -275,7 +333,7 @@ export default function ForecastReportTab({
         }
       `}</style>
 
-      <div className="no-print mb-4 flex items-center justify-between gap-3">
+      <div className="no-print mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-foreground">
             Forecast Report
@@ -287,13 +345,113 @@ export default function ForecastReportTab({
         <button
           type="button"
           onClick={handlePrint}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          disabled={!summary}
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Printer className="h-4 w-4" />
           Print Report
         </button>
       </div>
 
+      {/* DATE RANGE PICKER */}
+      <div className="no-print mb-6 rounded-md border border-border bg-card px-5 py-4 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+              <Calendar className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Report date range
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Pick any sub-window inside the forecast (e.g. May 1 – May 12).
+                Charts, tables, and metrics all narrow to the selected range.
+              </p>
+              {forecastBounds && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Available: {fmtLongDate(forecastBounds.min)} –{" "}
+                  {fmtLongDate(forecastBounds.max)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex flex-col">
+              <label
+                htmlFor="report-start"
+                className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                From
+              </label>
+              <input
+                id="report-start"
+                type="date"
+                value={startDate}
+                min={forecastBounds?.min}
+                max={endDate || forecastBounds?.max}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="flex flex-col">
+              <label
+                htmlFor="report-end"
+                className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                To
+              </label>
+              <input
+                id="report-end"
+                type="date"
+                value={endDate}
+                min={startDate || forecastBounds?.min}
+                max={forecastBounds?.max}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={resetRange}
+              className="flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Full range
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Quick presets:
+          </span>
+          {[
+            { label: "7 days", days: 7 },
+            { label: "14 days", days: 14 },
+            { label: "30 days", days: 30 },
+          ].map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => applyPreset(p.days)}
+              className="rounded-md border border-border bg-background px-3 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              First {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!summary && (
+        <div className="no-print mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+          <span className="font-semibold">No data in this range.</span> Adjust
+          the dates above or click <i>Full range</i> to reset.
+        </div>
+      )}
+
+      {summary && (
       <div className="print-area space-y-6 rounded-md border border-border bg-white p-6 text-black shadow-sm">
         <header className="border-b border-gray-300 pb-4">
           <h1 className="text-2xl font-bold">Blood Demand Forecast Report</h1>
@@ -742,6 +900,7 @@ export default function ForecastReportTab({
           </p>
         </footer>
       </div>
+      )}
     </div>
   );
 }

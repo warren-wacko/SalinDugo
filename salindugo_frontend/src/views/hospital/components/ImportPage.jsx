@@ -31,7 +31,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 
-export default function ImportData() {
+export default function ImportData({ onSwitchToAudit }) {
   const navigate = useNavigate();
 
   const [file, setFile] = useState(null);
@@ -44,6 +44,7 @@ export default function ImportData() {
   );
   const [todayStatus, setTodayStatus] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [overlapConflicts, setOverlapConflicts] = useState(null);
   const fileInputRef = useRef(null);
 
   // Constants specific to Blood Requests
@@ -145,12 +146,23 @@ export default function ImportData() {
       setShowConfirmModal(false);
       fetchTodayStatus();
     } catch (err) {
-      setError(
-        axios.isAxiosError(err) && err.response?.data?.message
-          ? err.response.data.message
-          : "Upload failed. Please check your file and try again.",
-      );
-      setShowConfirmModal(false);
+      // Special handling: 409 with date-overlap details opens the overlap
+      // modal instead of dropping into the generic error alert.
+      if (
+        axios.isAxiosError(err) &&
+        err.response?.status === 409 &&
+        err.response?.data?.code === "DATE_OVERLAP"
+      ) {
+        setOverlapConflicts(err.response.data.conflicts || []);
+        setShowConfirmModal(false);
+      } else {
+        setError(
+          axios.isAxiosError(err) && err.response?.data?.message
+            ? err.response.data.message
+            : "Upload failed. Please check your file and try again.",
+        );
+        setShowConfirmModal(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -453,6 +465,17 @@ export default function ImportData() {
           onConfirm={performUpload}
         />
       )}
+
+      {overlapConflicts && (
+        <OverlapBlockModal
+          conflicts={overlapConflicts}
+          onClose={() => setOverlapConflicts(null)}
+          onGoToAudit={() => {
+            setOverlapConflicts(null);
+            if (onSwitchToAudit) onSwitchToAudit();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -634,6 +657,244 @@ function ConfirmUploadModal({
                 ? "Upload anyway"
                 : "Confirm upload"}
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Group sorted YYYY-MM-DD strings into contiguous ranges so the modal can
+// render "Mar 1 – Mar 31 (31 days)" instead of 31 separate rows.
+function groupConsecutiveDates(conflicts) {
+  const sorted = [...conflicts].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+  );
+
+  const ranges = [];
+  let current = null;
+
+  for (const c of sorted) {
+    if (!current) {
+      current = {
+        start: c.date,
+        end: c.date,
+        days: 1,
+        rows: c.row_count,
+      };
+      continue;
+    }
+
+    // Is c.date exactly one day after current.end?
+    const prev = new Date(current.end + "T00:00:00Z");
+    prev.setUTCDate(prev.getUTCDate() + 1);
+    const expectedNext = prev.toISOString().slice(0, 10);
+
+    if (c.date === expectedNext) {
+      current.end = c.date;
+      current.days += 1;
+      current.rows += c.row_count;
+    } else {
+      ranges.push(current);
+      current = {
+        start: c.date,
+        end: c.date,
+        days: 1,
+        rows: c.row_count,
+      };
+    }
+  }
+  if (current) ranges.push(current);
+  return ranges;
+}
+
+function OverlapBlockModal({ conflicts, onClose, onGoToAudit }) {
+  const [showAllBatches, setShowAllBatches] = useState(false);
+
+  const formatDate = (iso) =>
+    new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  const formatDateTime = (iso) =>
+    new Date(iso).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+  const totalRows = conflicts.reduce((s, c) => s + c.row_count, 0);
+  const ranges = groupConsecutiveDates(conflicts);
+
+  // Collect unique batches across all conflicts (one date may share a batch
+  // with another date, so dedupe by batch_id).
+  const uniqueBatches = [];
+  const seen = new Set();
+  conflicts.forEach((c) => {
+    c.batches.forEach((b) => {
+      if (!seen.has(b.batch_id)) {
+        seen.add(b.batch_id);
+        uniqueBatches.push(b);
+      }
+    });
+  });
+
+  const BATCH_PREVIEW_LIMIT = 5;
+  const visibleBatches = showAllBatches
+    ? uniqueBatches
+    : uniqueBatches.slice(0, BATCH_PREVIEW_LIMIT);
+  const hiddenBatchCount = uniqueBatches.length - visibleBatches.length;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl max-h-[90vh] overflow-hidden rounded-lg border border-destructive/30 bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-destructive/30 bg-destructive/5 px-6 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-destructive/40 bg-destructive/10 text-destructive">
+              <ShieldAlert className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-lg font-semibold text-foreground">
+                Upload blocked — date conflict
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {conflicts.length} date
+                {conflicts.length === 1 ? "" : "s"} in this file already have
+                data in the system ({totalRows} existing row
+                {totalRows === 1 ? "" : "s"}). Re-uploading would duplicate
+                that data and bias the forecast.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[55vh] overflow-y-auto px-6 py-5 space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Conflicting date{conflicts.length === 1 ? "" : "s"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {ranges.length === conflicts.length
+                  ? `${conflicts.length} date${conflicts.length === 1 ? "" : "s"}`
+                  : `${ranges.length} range${ranges.length === 1 ? "" : "s"} (${conflicts.length} dates)`}
+              </p>
+            </div>
+            <div className="mt-2 space-y-2">
+              {ranges.map((r) => (
+                <div
+                  key={`${r.start}-${r.end}`}
+                  className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2"
+                >
+                  <span className="font-medium text-foreground">
+                    {r.days === 1
+                      ? formatDate(r.start)
+                      : `${formatDate(r.start)} – ${formatDate(r.end)}`}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {r.days === 1
+                      ? `${r.rows} row${r.rows === 1 ? "" : "s"}`
+                      : `${r.days} days, ${r.rows} rows`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Batches you'd need to revert
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {uniqueBatches.length} batch
+                {uniqueBatches.length === 1 ? "" : "es"}
+              </p>
+            </div>
+            {uniqueBatches.length === 0 ? (
+              <p className="mt-2 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                <span className="font-semibold">Legacy data — no batch.</span>
+                {" "}These dates contain rows from before the audit feature
+                existed, so they can't be reverted from the UI. Contact your
+                admin to remove them manually before re-uploading.
+              </p>
+            ) : (
+              <>
+                <div className="mt-2 space-y-2">
+                  {visibleBatches.map((b) => (
+                    <div
+                      key={b.batch_id}
+                      className="rounded-md border border-border bg-background px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-foreground">
+                          {b.uploaded_by_name || "—"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTime(b.created_at)}
+                        </span>
+                      </div>
+                      <div
+                        className="mt-1 truncate font-mono text-xs text-muted-foreground"
+                        title={b.filename}
+                      >
+                        {b.filename} • {b.row_count} rows
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {uniqueBatches.length > BATCH_PREVIEW_LIMIT && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllBatches((v) => !v)}
+                    className="mt-2 text-xs font-semibold text-primary hover:text-primary/80"
+                  >
+                    {showAllBatches
+                      ? "Show fewer"
+                      : `Show all ${uniqueBatches.length} batches (${hiddenBatchCount} more)`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          <Alert className="border-yellow-200 bg-yellow-50 text-yellow-800">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-semibold">To proceed:</span> open the{" "}
+              <b>Data Audit</b> tab, revert the batch
+              {uniqueBatches.length === 1 ? "" : "es"} above, then re-upload
+              your file.
+            </AlertDescription>
+          </Alert>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border bg-background/70 px-6 py-3">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          {uniqueBatches.length > 0 && (
+            <Button onClick={onGoToAudit} className="gap-2">
+              <ClipboardCheck className="h-4 w-4" />
+              Go to Data Audit
+            </Button>
+          )}
         </div>
       </div>
     </div>

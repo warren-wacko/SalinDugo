@@ -12,6 +12,30 @@ const upload = multer({
 
 const VALID_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const VALID_STATUS = ["open", "matched", "fulfilled", "cancelled"];
+const REQUIRED_COLUMNS = [
+  "request_date",
+  "blood_type",
+  "units_needed",
+  "status",
+];
+
+// Build a canonical key from a free-typed name so different orderings /
+// casings of the same person resolve to the same identity.
+//   "Ichigo Kurosaki"  -> "ichigo kurosaki"
+//   "Kurosaki Ichigo"  -> "ichigo kurosaki"
+//   "  ICHIGO  Kurosaki " -> "ichigo kurosaki"
+// Used only for matching against existing names; the original spelling
+// (or the first-seen variant) is what gets stored and displayed.
+function canonicalNameKey(name) {
+  if (!name) return "";
+  return String(name)
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
 
 /* =====================================================
    ONE-TIME SCHEMA BOOTSTRAP
@@ -141,16 +165,38 @@ function validateFile(req) {
 }
 
 /* =====================================================
-   SAFE DATE PARSER
+   STRICT DATE PARSER
+   - Excel date-formatted cells arrive as a Date object → accept
+   - Excel serial numbers (days since 1900) → accept
+   - Strings must be exactly YYYY-MM-DD. Lenient parsing of formats
+     like "5/1/2026" or "May 3, 2026" is rejected because they're
+     ambiguous and can silently map to the wrong calendar day.
 ===================================================== */
 function parseDate(value) {
-  if (typeof value === "number") {
-    return new Date(Math.round((value - 25569) * 86400 * 1000));
+  if (value instanceof Date) {
+    if (isNaN(value)) {
+      throw new Error("Invalid date value");
+    }
+    return value;
   }
 
-  const d = new Date(value);
-  if (isNaN(d)) throw new Error("Invalid date format");
+  if (typeof value === "number") {
+    const d = new Date(Math.round((value - 25569) * 86400 * 1000));
+    if (isNaN(d)) throw new Error("Invalid date value");
+    return d;
+  }
 
+  const str = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    throw new Error(
+      `Invalid date format "${str}". Expected YYYY-MM-DD (e.g., 2026-05-03).`,
+    );
+  }
+
+  const d = new Date(`${str}T00:00:00Z`);
+  if (isNaN(d)) {
+    throw new Error(`Invalid date "${str}".`);
+  }
   return d;
 }
 
@@ -178,14 +224,48 @@ router.post("/requests", upload.single("file"), async (req, res) => {
 
     if (!rows.length) throw new Error("Empty file");
 
-    const uploaded_by_name = String(req.body?.uploaded_by || "")
-      .trim()
-      .slice(0, 120) || null;
+    // Column-header check: catches files whose header row doesn't match
+    // the template (e.g. "bloodType" instead of "blood_type"). Without
+    // this, downstream parsing silently sees `undefined` for every cell.
+    const headerKeys = Object.keys(rows[0] || {});
+    const missingCols = REQUIRED_COLUMNS.filter(
+      (c) => !headerKeys.includes(c),
+    );
+    if (missingCols.length > 0) {
+      throw new Error(
+        `Missing required column(s): ${missingCols.join(", ")}. ` +
+          `Expected exactly: ${REQUIRED_COLUMNS.join(", ")}`,
+      );
+    }
+
+    const inputName =
+      String(req.body?.uploaded_by || "").trim().slice(0, 120) || null;
     const filename = String(req.file.originalname || "").slice(0, 255);
 
-    console.log("START IMPORT:", rows.length, "by", uploaded_by_name);
+    console.log("START IMPORT:", rows.length, "by", inputName);
 
     await client.query("BEGIN");
+
+    // Resolve the canonical spelling for this uploader. If a previous
+    // upload for this hospital used the same name in a different
+    // order/casing, reuse that exact spelling so the audit log groups
+    // them as one personnel.
+    let uploaded_by_name = inputName;
+    if (inputName) {
+      const inputKey = canonicalNameKey(inputName);
+      const existingNames = await client.query(
+        `SELECT DISTINCT uploaded_by_name
+         FROM import_batches
+         WHERE hospital_id = $1 AND uploaded_by_name IS NOT NULL`,
+        [hospital_id],
+      );
+      const match = existingNames.rows.find(
+        (r) => canonicalNameKey(r.uploaded_by_name) === inputKey,
+      );
+      if (match) {
+        uploaded_by_name = match.uploaded_by_name;
+      }
+    }
 
     // First pass: parse + validate, collect parsed rows + min/max date
     const parsed = [];
@@ -195,7 +275,12 @@ router.post("/requests", upload.single("file"), async (req, res) => {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
 
-      const request_date = parseDate(row.request_date);
+      let request_date;
+      try {
+        request_date = parseDate(row.request_date);
+      } catch (e) {
+        throw new Error(`Row ${i + 2}: ${e.message}`);
+      }
 
       const blood_type = String(row.blood_type || "")
         .trim()
@@ -233,6 +318,84 @@ router.post("/requests", upload.single("file"), async (req, res) => {
       if (!dateMax || request_date > dateMax) dateMax = request_date;
 
       parsed.push({ blood_type, units_needed, request_date, status });
+    }
+
+    // ============================================================
+    // DUPLICATE PREVENTION — date-overlap hard block
+    //
+    // Reject the entire upload if ANY date in the file already has
+    // rows in the DB for this hospital. The forecast aggregates by
+    // (date, blood_type) and SUMs units_needed, so a re-uploaded
+    // day would silently double the demand signal feeding the
+    // model. To re-upload, the user must revert the existing batch
+    // via the Data Audit tab first.
+    // ============================================================
+    const uploadDates = Array.from(
+      new Set(
+        parsed.map((p) => p.request_date.toISOString().slice(0, 10)),
+      ),
+    );
+
+    const conflictRes = await client.query(
+      `SELECT
+         request_date::date::text AS date,
+         COUNT(*)::int AS row_count,
+         COALESCE(
+           ARRAY_AGG(DISTINCT batch_id) FILTER (WHERE batch_id IS NOT NULL),
+           '{}'::uuid[]
+         ) AS batch_ids
+       FROM requests
+       WHERE hospital_id = $1
+         AND request_date::date = ANY($2::date[])
+       GROUP BY request_date::date
+       ORDER BY date`,
+      [hospital_id, uploadDates],
+    );
+
+    if (conflictRes.rows.length > 0) {
+      // Fetch batch metadata for any batches owning conflicting rows
+      const allBatchIds = Array.from(
+        new Set(
+          conflictRes.rows.flatMap((r) => r.batch_ids).filter(Boolean),
+        ),
+      );
+
+      const batchMap = {};
+      if (allBatchIds.length > 0) {
+        const batchRes = await client.query(
+          `SELECT batch_id, uploaded_by_name, filename,
+                  row_count, created_at
+           FROM import_batches
+           WHERE batch_id = ANY($1::uuid[])`,
+          [allBatchIds],
+        );
+        batchRes.rows.forEach((b) => {
+          batchMap[b.batch_id] = b;
+        });
+      }
+
+      const conflicts = conflictRes.rows.map((c) => ({
+        date: c.date,
+        row_count: c.row_count,
+        batches: c.batch_ids
+          .map((bid) => batchMap[bid])
+          .filter(Boolean),
+      }));
+
+      await client.query("ROLLBACK");
+
+      console.log(
+        "IMPORT BLOCKED (date overlap):",
+        conflicts.length,
+        "conflicting dates",
+      );
+
+      return res.status(409).json({
+        code: "DATE_OVERLAP",
+        message:
+          "Upload rejected — some dates in this file already have data.",
+        conflicts,
+      });
     }
 
     // Create the batch row first so we can stamp every request with batch_id
