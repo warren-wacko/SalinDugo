@@ -1,2 +1,0 @@
-# SalinDugo
-SalinDugo Thesis Capstone

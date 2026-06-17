@@ -15,12 +15,12 @@ export const authenticateToken = (req, res, next) => {
     if (err)
       return res.status(403).json({ message: "Invalid or expired token" });
 
-    req.user = user; // decoded { id, role }
+    req.user = user;
     next();
   });
 };
 
-// Middleware for role-based access
+// Middleware for role-based access (RBAC)
 export const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {

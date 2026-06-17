@@ -100,7 +100,9 @@ function PrintableSelector({ id, note, children }) {
           data-no-print="true"
           aria-pressed={selected}
           aria-label={
-            selected ? "Deselect chart for printing" : "Select chart for printing"
+            selected
+              ? "Deselect chart for printing"
+              : "Select chart for printing"
           }
           className={`absolute right-3 top-3 z-30 flex h-9 w-9 items-center justify-center rounded-md border-2 shadow-md transition-colors ${
             selected
@@ -323,8 +325,6 @@ export default function DemandForecastingTab({ hospitalId }) {
         if (mode === "backtest") {
           const res = await api.get(`/api/backtest/${hospitalId}`);
 
-          console.log("RAW BACKTEST RESPONSE:", res.data);
-
           setBacktestData(Array.isArray(res.data.data) ? res.data.data : []);
           setMetrics(res.data.summary || null);
           setTotals(res.data.totals || null);
@@ -335,7 +335,6 @@ export default function DemandForecastingTab({ hospitalId }) {
           setSelectedBacktestBloodType(summaries[0]?.blood_type || "A+");
         }
       } catch (err) {
-        console.error(err);
         setError("Failed to load data");
       } finally {
         setLoading(false);
@@ -423,8 +422,6 @@ export default function DemandForecastingTab({ hospitalId }) {
       ? "-"
       : `${value}${suffix}`;
 
-  console.log("BACKTEST GROUPED:", backtestGrouped);
-
   // ===============================
   // GROUP BY DATE
   // ===============================
@@ -483,8 +480,6 @@ export default function DemandForecastingTab({ hospitalId }) {
         item.ci_95_upper != null,
     );
   }, [forecastIntervalData]);
-
-  console.log("forecast interval:", forecastIntervalData);
 
   // ===============================
   // DEMAND ACCELERATION
@@ -590,7 +585,6 @@ export default function DemandForecastingTab({ hospitalId }) {
 
     return best;
   }, [bloodTypeForecast]);
-  console.log("history:", historyTotal);
 
   const last7DayActual = useMemo(() => {
     if (!historyByType.length) return {};
@@ -715,6 +709,218 @@ export default function DemandForecastingTab({ hospitalId }) {
     return `${s} – ${e}`;
   };
 
+  // =====================================================
+  // PRINT-ONLY NUMERICAL SUMMARIES
+  // One useMemo computes the small stat blocks that appear under each
+  // chart in the print output. Hidden on screen via data-print-only.
+  // =====================================================
+  const printSummaries = useMemo(() => {
+    const fmtDate = (iso) =>
+      iso
+        ? new Date(iso).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })
+        : "—";
+    const fmtNum = (n, d = 0) =>
+      n == null || Number.isNaN(Number(n)) ? "—" : Number(n).toFixed(d);
+
+    // 1. Total Demand Forecast
+    let totalDemand = null;
+    if (totalForecast.length) {
+      const values = totalForecast.map((d) =>
+        Number(d.total_predicted_demand || 0),
+      );
+      const total = values.reduce((s, v) => s + v, 0);
+      const peak = Math.max(...values);
+      const min = Math.min(...values);
+      const peakDay = totalForecast.find(
+        (d) => Number(d.total_predicted_demand) === peak,
+      );
+      const minDay = totalForecast.find(
+        (d) => Number(d.total_predicted_demand) === min,
+      );
+      totalDemand = {
+        total: fmtNum(total),
+        avg: fmtNum(total / values.length, 1),
+        peak: fmtNum(peak),
+        peakDate: fmtDate(peakDay?.date),
+        min: fmtNum(min),
+        minDate: fmtDate(minDay?.date),
+        days: values.length,
+        startDate: fmtDate(totalForecast[0].date),
+        endDate: fmtDate(totalForecast[totalForecast.length - 1].date),
+      };
+    }
+
+    // 2. Demand Change
+    let demandChange = null;
+    if (accelerationData.length) {
+      let largestUp = null;
+      let largestDown = null;
+      let upDays = 0;
+      let downDays = 0;
+      accelerationData.forEach((d, i) => {
+        if (i === 0) return;
+        const c = Number(d.change || 0);
+        if (c > 0) {
+          upDays++;
+          if (!largestUp || c > largestUp.change)
+            largestUp = { date: d.date, change: c };
+        } else if (c < 0) {
+          downDays++;
+          if (!largestDown || c < largestDown.change)
+            largestDown = { date: d.date, change: c };
+        }
+      });
+      demandChange = {
+        upDays,
+        downDays,
+        largestUp: largestUp
+          ? `${fmtDate(largestUp.date)} (+${fmtNum(largestUp.change)})`
+          : "—",
+        largestDown: largestDown
+          ? `${fmtDate(largestDown.date)} (${fmtNum(largestDown.change)})`
+          : "—",
+      };
+    }
+
+    // 3. Demand Budget by Blood Type
+    let budget = null;
+    if (rankedBudget?.length) {
+      const total = rankedBudget.reduce((s, [, v]) => s + Number(v || 0), 0);
+      const top3 = rankedBudget.slice(0, 3).map(([bt, units]) => ({
+        bt,
+        units: fmtNum(units),
+      }));
+      budget = { total: fmtNum(total), top3 };
+    }
+
+    // 4. Per-blood-type 30-day totals
+    let perType = null;
+    if (demandBudget30Days && Object.keys(demandBudget30Days).length) {
+      perType = BLOOD_TYPES.map((bt) => ({
+        bt,
+        total: fmtNum(demandBudget30Days[bt] || 0),
+      }));
+    }
+
+    // 5. High-Demand Streak
+    let streakSummary = null;
+    const streakEntries = Object.entries(streaks || {});
+    if (streakEntries.length > 0) {
+      let longest = null;
+      streakEntries.forEach(([bt, s]) => {
+        if (!longest || s.length > longest.length) {
+          longest = { bt, length: s.length, start: s.start, end: s.end };
+        }
+      });
+      streakSummary = {
+        count: streakEntries.length,
+        longest: longest
+          ? {
+              bt: longest.bt,
+              days: longest.length,
+              range: `${fmtDate(longest.start)} – ${fmtDate(longest.end)}`,
+            }
+          : null,
+        types: streakEntries.map(([bt]) => bt).join(", "),
+      };
+    } else {
+      streakSummary = { count: 0, longest: null, types: "—" };
+    }
+
+    // 6. 7-Day Trend
+    let trendSummary = null;
+    const trendEntries = Object.entries(trendByBloodType || {});
+    if (trendEntries.length > 0) {
+      let increasing = 0;
+      let decreasing = 0;
+      let stable = 0;
+      let newDemand = 0;
+      let noDemand = 0;
+      let strongestGrowth = null;
+      trendEntries.forEach(([bt, t]) => {
+        if (t.trend === "Increasing" || t.trend === "Slight ↑") increasing++;
+        else if (t.trend === "Decreasing" || t.trend === "Slight ↓")
+          decreasing++;
+        else if (t.trend === "Stable") stable++;
+        else if (t.trend === "New Demand") newDemand++;
+        else if (t.trend === "No Demand") noDemand++;
+
+        if (t.delta != null && t.delta > 0) {
+          if (!strongestGrowth || t.delta > strongestGrowth.delta) {
+            strongestGrowth = {
+              bt,
+              delta: t.delta,
+              changePct: t.changePct,
+            };
+          }
+        }
+      });
+      trendSummary = {
+        increasing,
+        decreasing,
+        stable,
+        newDemand,
+        noDemand,
+        strongestGrowth: strongestGrowth
+          ? {
+              bt: strongestGrowth.bt,
+              delta: `+${fmtNum(strongestGrowth.delta, 1)}`,
+              pct:
+                strongestGrowth.changePct != null
+                  ? `+${fmtNum(strongestGrowth.changePct, 0)}%`
+                  : "—",
+            }
+          : null,
+      };
+    }
+
+    // 7. Forecast Confidence Intervals (for currently-selected blood type)
+    let ciSummary = null;
+    if (forecastIntervalData.length) {
+      const predictions = forecastIntervalData.map((d) =>
+        Number(d.prediction || 0),
+      );
+      const ci80Widths = forecastIntervalData.map(
+        (d) => Number(d.ci_80_upper || 0) - Number(d.ci_80_lower || 0),
+      );
+      const ci95Widths = forecastIntervalData.map(
+        (d) => Number(d.ci_95_upper || 0) - Number(d.ci_95_lower || 0),
+      );
+      const sum = (arr) => arr.reduce((s, v) => s + v, 0);
+      ciSummary = {
+        days: forecastIntervalData.length,
+        startDate: fmtDate(forecastIntervalData[0]?.date),
+        endDate: fmtDate(
+          forecastIntervalData[forecastIntervalData.length - 1]?.date,
+        ),
+        avgPrediction: fmtNum(sum(predictions) / predictions.length, 1),
+        avgCi80Width: fmtNum(sum(ci80Widths) / ci80Widths.length, 1),
+        avgCi95Width: fmtNum(sum(ci95Widths) / ci95Widths.length, 1),
+      };
+    }
+
+    return {
+      totalDemand,
+      demandChange,
+      budget,
+      perType,
+      streakSummary,
+      trendSummary,
+      ciSummary,
+    };
+  }, [
+    totalForecast,
+    accelerationData,
+    rankedBudget,
+    demandBudget30Days,
+    streaks,
+    trendByBloodType,
+    forecastIntervalData,
+  ]);
+
   const yoyDisplay = useMemo(() => {
     if (yoyChange === null || forecastTotal == null || lastYearTotal == null)
       return null;
@@ -766,15 +972,33 @@ export default function DemandForecastingTab({ hospitalId }) {
 
   return (
     <PrintSelectionContext.Provider value={printContextValue}>
-    <div className="w-full space-y-6 bg-[linear-gradient(180deg,oklch(0.99_0_0)_0%,oklch(0.965_0.01_25)_100%)] p-4 sm:p-6 lg:p-8">
-      {/* PRINT-ONLY CSS — applied when body has .printing-selected-only */}
-      <style>{`
+      <div className="w-full space-y-6 bg-[linear-gradient(180deg,oklch(0.99_0_0)_0%,oklch(0.965_0.01_25)_100%)] p-4 sm:p-6 lg:p-8">
+        {/* PRINT-ONLY CSS — applied when body has .printing-selected-only */}
+        <style>{`
+        /* data-print-only elements: hidden on screen, shown only in print.
+           Used for explicit context headers (e.g. "Selected Blood Type: A+")
+           that replace the interactive button rows in print. */
+        [data-print-only="true"] {
+          display: none;
+        }
+
         @media print {
+          body.printing-selected-only [data-print-only="true"] {
+            display: block !important;
+          }
+
           /* Hide global chrome (navbar uses <header>, sidebar uses <aside>) */
           body.printing-selected-only [data-no-print="true"],
           body.printing-selected-only nav,
           body.printing-selected-only header,
           body.printing-selected-only aside {
+            display: none !important;
+          }
+
+          /* Hide recharts legends in print — the per-chart numerical
+             summaries already list every blood type with its value, and
+             the legend often truncates at narrow print widths. */
+          body.printing-selected-only .recharts-legend-wrapper {
             display: none !important;
           }
 
@@ -845,1179 +1069,1668 @@ export default function DemandForecastingTab({ hospitalId }) {
         }
       `}</style>
 
-      {/* HEADER */}
-      <div data-no-print="true" className="rounded-md border border-border bg-card px-5 py-5 shadow-sm">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-              <Radar className="h-6 w-6" />
+        {/* HEADER */}
+        <div
+          data-no-print="true"
+          className="rounded-md border border-border bg-card px-5 py-5 shadow-sm"
+        >
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+                <Radar className="h-6 w-6" />
+              </div>
+              <div>
+                <Badge className="mb-3 bg-primary/10 text-primary hover:bg-primary/10">
+                  Forecast Window: {forecastWindow}
+                </Badge>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                  Demand Forecasting
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                  Monitor 30-day blood demand, inventory runway, model
+                  validation, and blood type risk from one operations view.
+                </p>
+              </div>
             </div>
-            <div>
-              <Badge className="mb-3 bg-primary/10 text-primary hover:bg-primary/10">
-                Forecast Window: {forecastWindow}
-              </Badge>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                Demand Forecasting
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                Monitor 30-day blood demand, inventory runway, model validation,
-                and blood type risk from one operations view.
-              </p>
+
+            <div className="flex rounded-md border border-border bg-background p-1">
+              <button
+                type="button"
+                onClick={() => setMode("live")}
+                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                  mode === "live"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                Live Forecast
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("backtest")}
+                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                  mode === "backtest"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                Backtest
+              </button>
             </div>
-          </div>
-
-          <div className="flex rounded-md border border-border bg-background p-1">
-            <button
-              type="button"
-              onClick={() => setMode("live")}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                mode === "live"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              Live Forecast
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("backtest")}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                mode === "backtest"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              Backtest
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* PRINT-CUSTOM TOOLBAR */}
-      <div
-        data-no-print="true"
-        className={`flex flex-col gap-3 rounded-md border bg-card px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${
-          printSelectionMode
-            ? "sticky top-0 z-40 border-primary/30 bg-primary/5"
-            : "border-border"
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={`flex h-9 w-9 items-center justify-center rounded-md border ${
-              printSelectionMode
-                ? "border-primary/40 bg-primary/15 text-primary"
-                : "border-primary/20 bg-primary/10 text-primary"
-            }`}
-          >
-            <Printer className="h-4 w-4" />
-          </div>
-          <div>
-            {printSelectionMode ? (
-              <>
-                <p className="text-sm font-semibold text-foreground">
-                  {selectedPrintIds.size} chart
-                  {selectedPrintIds.size === 1 ? "" : "s"} selected
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Tap the checkbox on each chart to include it in the printout.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-foreground">
-                  Print specific charts
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Pick exactly which charts to include — for example, just the
-                  O+ confidence interval.
-                </p>
-              </>
-            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {printSelectionMode ? (
-            <>
-              <button
-                type="button"
-                onClick={handleSelectAllPrintables}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                onClick={handleClearPrintSelection}
-                disabled={selectedPrintIds.size === 0}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelPrintMode}
-                className="flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <X className="h-3 w-3" />
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handlePrintSelected}
-                disabled={selectedPrintIds.size === 0}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Printer className="h-3.5 w-3.5" />
-                Print
-                {selectedPrintIds.size > 0 ? ` (${selectedPrintIds.size})` : ""}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setPrintSelectionMode(true)}
-              className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+        {/* PRINT-CUSTOM TOOLBAR */}
+        <div
+          data-no-print="true"
+          className={`flex flex-col gap-3 rounded-md border bg-card px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${
+            printSelectionMode
+              ? "sticky top-0 z-40 border-primary/30 bg-primary/5"
+              : "border-border"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-9 w-9 items-center justify-center rounded-md border ${
+                printSelectionMode
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-primary/20 bg-primary/10 text-primary"
+              }`}
             >
               <Printer className="h-4 w-4" />
-              Print Custom Charts
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* KPI CARDS - TOP SECTION */}
-      {mode === "live" && (
-        <div data-no-print="true" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <KPICard
-            icon={TrendingUp}
-            title="30-Day Total Demand"
-            value={kpis?.totalDemand}
-            description="Total predicted units needed across all types"
-            tone="red"
-          />
-          <KPICard
-            icon={AlertTriangle}
-            title="Peak Daily Demand"
-            value={kpis?.peakDemand}
-            description="Highest single-day forecast"
-            tone="amber"
-          />
-          <KPICard
-            icon={Droplet}
-            title="Top Blood Type (30 Days)"
-            value={mostInDemandBloodType?.bloodType || "-"}
-            description={
-              mostInDemandBloodType
-                ? `${Math.round(mostInDemandBloodType.demand)} units expected`
-                : "No data"
-            }
-            tone="red"
-          />
-          <KPICard
-            icon={AlertTriangle}
-            title="Top Blood Type (7 Days)"
-            value={topBloodType7?.bloodType || "-"}
-            description={
-              topBloodType7
-                ? `${Math.round(topBloodType7.value)} units expected`
-                : "No data"
-            }
-            tone="amber"
-          />
-          <KPICard
-            icon={TrendingUp}
-            title="Year-over-Year Demand"
-            value={yoyDisplay?.value || "-"}
-            description={
-              yoyDisplay ? (
+            </div>
+            <div>
+              {printSelectionMode ? (
                 <>
-                  <span
-                    className={
-                      yoyDisplay.trend === "Increasing"
-                        ? "text-red-600 font-medium"
-                        : yoyDisplay.trend === "Decreasing"
-                          ? "text-green-600 font-medium"
-                          : "text-muted-foreground"
-                    }
-                  >
-                    {yoyDisplay.comparison} • {yoyDisplay.trend}
-                  </span>
-                  <br />
-                  <span className="text-xs text-muted-foreground">
-                    {yoyDisplay.range} vs last year
-                  </span>
+                  <p className="text-sm font-semibold text-foreground">
+                    {selectedPrintIds.size} chart
+                    {selectedPrintIds.size === 1 ? "" : "s"} selected
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Tap the checkbox on each chart to include it in the
+                    printout.
+                  </p>
                 </>
               ) : (
-                "No comparison data"
-              )
-            }
-            tone={yoyDisplay?.tone || "neutral"}
-          />
+                <>
+                  <p className="text-sm font-semibold text-foreground">
+                    Print specific charts
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Pick exactly which charts to include — for example, just the
+                    O+ confidence interval.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {printSelectionMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSelectAllPrintables}
+                  className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearPrintSelection}
+                  disabled={selectedPrintIds.size === 0}
+                  className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelPrintMode}
+                  className="flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintSelected}
+                  disabled={selectedPrintIds.size === 0}
+                  className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Print
+                  {selectedPrintIds.size > 0
+                    ? ` (${selectedPrintIds.size})`
+                    : ""}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPrintSelectionMode(true)}
+                className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+              >
+                <Printer className="h-4 w-4" />
+                Print Custom Charts
+              </button>
+            )}
+          </div>
         </div>
-      )}
-      {/* PRIMARY FORECAST SECTION */}
-      <div className="space-y-6">
-        {mode === "backtest" && (
-          <>
-            <PrintableSelector id="backtest-total">
-            <ChartCardWithIcon
-              icon={TrendingUp}
-              title="Total Demand Backtest"
-              description="Actual vs predicted demand across all blood types"
-            >
-              <div className="mb-4 flex justify-end">
-                <div className="flex rounded-md border border-border bg-background p-0.5">
-                  {[
-                    {
-                      key: "80",
-                      label: "80% CI",
-                      active: "bg-green-600 text-white",
-                    },
-                    {
-                      key: "95",
-                      label: "95% CI",
-                      active: "bg-blue-600 text-white",
-                    },
-                    {
-                      key: "both",
-                      label: "Both",
-                      active: "bg-primary text-primary-foreground",
-                    },
-                  ].map(({ key, label, active }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setSelectedBacktestCI(key)}
-                      className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        selectedBacktestCI === key
-                          ? `${active} shadow-sm`
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <ChartContainer config={chartConfig} className="h-72 w-full">
-                <ComposedChart data={backtestGrouped}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <ChartTooltip content={<BacktestTooltip />} />
-
-                  {/* 95% CI band */}
-                  {(selectedBacktestCI === "95" ||
-                    selectedBacktestCI === "both") && (
-                    <Area
-                      type="linear"
-                      dataKey="ci_95_upper"
-                      baseValue={(d) =>
-                        Number.isFinite(d.ci_95_lower)
-                          ? d.ci_95_lower
-                          : d.predicted
-                      }
-                      fill="rgba(147,197,253,0.25)"
-                      stroke="none"
-                      isAnimationActive={false}
-                    />
-                  )}
-
-                  {/* 80% CI band */}
-                  {(selectedBacktestCI === "80" ||
-                    selectedBacktestCI === "both") && (
-                    <Area
-                      type="linear"
-                      dataKey="ci_80_upper"
-                      baseValue={(d) =>
-                        Number.isFinite(d.ci_80_lower)
-                          ? d.ci_80_lower
-                          : d.predicted
-                      }
-                      fill="rgba(34,197,94,0.35)"
-                      stroke="none"
-                      isAnimationActive={false}
-                    />
-                  )}
-
-                  {/* Lower bound lines */}
-                  {(selectedBacktestCI === "80" ||
-                    selectedBacktestCI === "both") && (
-                    <Line
-                      type="linear"
-                      dataKey="ci_80_lower"
-                      stroke="#16a34a"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {(selectedBacktestCI === "95" ||
-                    selectedBacktestCI === "both") && (
-                    <Line
-                      type="linear"
-                      dataKey="ci_95_lower"
-                      stroke="#2563eb"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-
-                  {/* ACTUAL */}
-                  <Line
-                    type="monotone"
-                    dataKey="actual"
-                    stroke="#22c55e"
-                    strokeWidth={3}
-                  />
-
-                  {/* PREDICTED */}
-                  <Line
-                    type="monotone"
-                    dataKey="predicted"
-                    stroke="#dc2626"
-                    strokeWidth={3}
-                    dot={{ r: 3 }}
-                  />
-                </ComposedChart>
-              </ChartContainer>
-              {metrics && totals && (
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Model Error
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      RMSE: <b>{formatMetric(metrics.RMSE_model)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAE: <b>{formatMetric(metrics.MAE_model)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAPE: <b>{formatMetric(metrics.MAPE_model, "%")}</b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Baseline Error
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      RMSE: <b>{formatMetric(metrics.RMSE_baseline)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAE: <b>{formatMetric(metrics.MAE_baseline)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAPE: <b>{formatMetric(metrics.MAPE_baseline, "%")}</b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Actual vs Predicted
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      Actual: <b>{formatMetric(totals.actual_total)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      Predicted: <b>{formatMetric(totals.predicted_total)}</b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Difference
-                    </p>
-                    <p
-                      className={`mt-2 text-lg font-bold ${
-                        totals.difference > 0
-                          ? "text-blue-600"
-                          : totals.difference < 0
-                            ? "text-red-600"
-                            : "text-foreground"
-                      }`}
-                    >
-                      {totals.difference > 0 ? "+" : ""}
-                      {formatMetric(totals.difference)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatMetric(totals.percentage_error, "%")} error
-                    </p>
-                  </div>
-                </div>
-              )}
-              {false && selectedBacktestMetrics && (
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Model Error
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      RMSE:{" "}
-                      <b>{formatMetric(selectedBacktestMetrics.RMSE_model)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAE:{" "}
-                      <b>{formatMetric(selectedBacktestMetrics.MAE_model)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAPE:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.MAPE_model, "%")}
-                      </b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Baseline Error
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      RMSE:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.RMSE_baseline)}
-                      </b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAE:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.MAE_baseline)}
-                      </b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAPE:{" "}
-                      <b>
-                        {formatMetric(
-                          selectedBacktestMetrics.MAPE_baseline,
-                          "%",
-                        )}
-                      </b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Actual vs Predicted
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      Actual:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.actual_total)}
-                      </b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      Predicted:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.predicted_total)}
-                      </b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Difference
-                    </p>
-                    <p
-                      className={`mt-2 text-lg font-bold ${
-                        selectedBacktestMetrics.difference > 0
-                          ? "text-blue-600"
-                          : selectedBacktestMetrics.difference < 0
-                            ? "text-red-600"
-                            : "text-foreground"
-                      }`}
-                    >
-                      {selectedBacktestMetrics.difference > 0 ? "+" : ""}
-                      {formatMetric(selectedBacktestMetrics.difference)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatMetric(
-                        selectedBacktestMetrics.percentage_error,
-                        "%",
-                      )}{" "}
-                      error
-                    </p>
-                  </div>
-                </div>
-              )}
-              {/* METRICS */}
-              {false && metrics && (
-                <div className="mt-4 text-sm">
-                  RMSE (Model): <b>{metrics.RMSE_model}</b> | MAE (Model):{" "}
-                  <b>{metrics.MAE_model}</b> | MAPE (Model):{" "}
-                  <b>{metrics.MAPE_model}%</b>
-                  <br />
-                  RMSE (Baseline): <b>{metrics.RMSE_baseline}</b> | MAE
-                  (Baseline): <b>{metrics.MAE_baseline}</b> | MAPE (Baseline):{" "}
-                  <b>{metrics.MAPE_baseline}%</b>
-                  {/* 🔥 NEW SECTION */}
-                  {totals && (
-                    <>
-                      <hr className="my-2 opacity-30" />
-                      Total Actual: <b>{totals.actual_total}</b> | Predicted:{" "}
-                      <b>{totals.predicted_total}</b>
-                      <br />
-                      Difference:{" "}
-                      <b
-                        className={
-                          totals.difference > 0
-                            ? "text-blue-500"
-                            : totals.difference < 0
-                              ? "text-red-500"
-                              : ""
-                        }
-                      >
-                        {totals.difference > 0 ? "+" : ""}
-                        {totals.difference}
-                      </b>{" "}
-                      ({totals.percentage_error}%)
-                    </>
-                  )}
-                </div>
-              )}
-            </ChartCardWithIcon>
-            </PrintableSelector>
-            <PrintableSelector
-              id="backtest-by-blood-type"
-              note={`Currently: ${selectedBacktestBloodType}`}
-            >
-            <ChartCardWithIcon
-              icon={Droplet}
-              title="Backtest by Blood Type"
-              description="Actual vs predicted demand for each individual blood type"
-            >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-2">
-                  {BLOOD_TYPES.map((bt) => (
-                    <button
-                      key={bt}
-                      type="button"
-                      onClick={() => setSelectedBacktestBloodType(bt)}
-                      className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        selectedBacktestBloodType === bt
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {bt}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex rounded-md border border-border bg-background p-0.5">
-                  {[
-                    {
-                      key: "80",
-                      label: "80% CI",
-                      active: "bg-green-600 text-white",
-                    },
-                    {
-                      key: "95",
-                      label: "95% CI",
-                      active: "bg-blue-600 text-white",
-                    },
-                    {
-                      key: "both",
-                      label: "Both",
-                      active: "bg-primary text-primary-foreground",
-                    },
-                  ].map(({ key, label, active }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setSelectedBloodTypeCI(key)}
-                      className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        selectedBloodTypeCI === key
-                          ? `${active} shadow-sm`
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <ChartContainer config={chartConfig} className="h-72 w-full">
-                <ComposedChart data={bloodTypeBacktestGrouped}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <ChartTooltip content={<BacktestTooltip />} />
-
-                  {/* 95% CI band */}
-                  {(selectedBloodTypeCI === "95" ||
-                    selectedBloodTypeCI === "both") && (
-                    <Area
-                      type="linear"
-                      dataKey="ci_95_upper"
-                      baseValue={(d) =>
-                        Number.isFinite(d.ci_95_lower)
-                          ? d.ci_95_lower
-                          : d.predicted
-                      }
-                      fill="rgba(147,197,253,0.25)"
-                      stroke="none"
-                      isAnimationActive={false}
-                    />
-                  )}
-
-                  {/* 80% CI band */}
-                  {(selectedBloodTypeCI === "80" ||
-                    selectedBloodTypeCI === "both") && (
-                    <Area
-                      type="linear"
-                      dataKey="ci_80_upper"
-                      baseValue={(d) =>
-                        Number.isFinite(d.ci_80_lower)
-                          ? d.ci_80_lower
-                          : d.predicted
-                      }
-                      fill="rgba(34,197,94,0.35)"
-                      stroke="none"
-                      isAnimationActive={false}
-                    />
-                  )}
-
-                  {/* Lower bound lines */}
-                  {(selectedBloodTypeCI === "80" ||
-                    selectedBloodTypeCI === "both") && (
-                    <Line
-                      type="linear"
-                      dataKey="ci_80_lower"
-                      stroke="#16a34a"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {(selectedBloodTypeCI === "95" ||
-                    selectedBloodTypeCI === "both") && (
-                    <Line
-                      type="linear"
-                      dataKey="ci_95_lower"
-                      stroke="#2563eb"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-
-                  <Line
-                    type="monotone"
-                    dataKey="actual"
-                    stroke="#22c55e"
-                    strokeWidth={3}
-                    dot={{ r: 3 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="predicted"
-                    stroke="#dc2626"
-                    strokeWidth={3}
-                    dot={{ r: 3 }}
-                  />
-                </ComposedChart>
-              </ChartContainer>
-
-              {selectedBacktestMetrics && (
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Model Error
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      RMSE:{" "}
-                      <b>{formatMetric(selectedBacktestMetrics.RMSE_model)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAE:{" "}
-                      <b>{formatMetric(selectedBacktestMetrics.MAE_model)}</b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAPE:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.MAPE_model, "%")}
-                      </b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Baseline Error
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      RMSE:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.RMSE_baseline)}
-                      </b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAE:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.MAE_baseline)}
-                      </b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      MAPE:{" "}
-                      <b>
-                        {formatMetric(
-                          selectedBacktestMetrics.MAPE_baseline,
-                          "%",
-                        )}
-                      </b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Actual vs Predicted
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      Actual:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.actual_total)}
-                      </b>
-                    </p>
-                    <p className="text-sm text-foreground">
-                      Predicted:{" "}
-                      <b>
-                        {formatMetric(selectedBacktestMetrics.predicted_total)}
-                      </b>
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Difference
-                    </p>
-                    <p
-                      className={`mt-2 text-lg font-bold ${
-                        selectedBacktestMetrics.difference > 0
-                          ? "text-blue-600"
-                          : selectedBacktestMetrics.difference < 0
-                            ? "text-red-600"
-                            : "text-foreground"
-                      }`}
-                    >
-                      {selectedBacktestMetrics.difference > 0 ? "+" : ""}
-                      {formatMetric(selectedBacktestMetrics.difference)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatMetric(
-                        selectedBacktestMetrics.percentage_error,
-                        "%",
-                      )}{" "}
-                      error
-                    </p>
-                  </div>
-                </div>
-              )}
-            </ChartCardWithIcon>
-            </PrintableSelector>
-          </>
-        )}
-        {/* MAIN TREND CHART */}
+        {/* KPI CARDS - TOP SECTION */}
         {mode === "live" && (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(22rem,0.8fr)]">
-            <PrintableSelector id="total-demand-forecast">
-            <ChartCardWithIcon
+          <div
+            data-no-print="true"
+            className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5"
+          >
+            <KPICard
               icon={TrendingUp}
-              title="Total Demand Forecast"
-              description="30-day trend of total blood demand across all types"
-            >
-              <ChartContainer config={chartConfig} className="h-72 w-full">
-                <AreaChart data={totalForecast}>
-                  <defs>
-                    <linearGradient
-                      id="colorDemand"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
+              title="30-Day Total Demand"
+              value={kpis?.totalDemand}
+              description="Total predicted units needed across all types"
+              tone="red"
+            />
+            <KPICard
+              icon={AlertTriangle}
+              title="Peak Daily Demand"
+              value={kpis?.peakDemand}
+              description="Highest single-day forecast"
+              tone="amber"
+            />
+            <KPICard
+              icon={Droplet}
+              title="Top Blood Type (30 Days)"
+              value={mostInDemandBloodType?.bloodType || "-"}
+              description={
+                mostInDemandBloodType
+                  ? `${Math.round(mostInDemandBloodType.demand)} units expected`
+                  : "No data"
+              }
+              tone="red"
+            />
+            <KPICard
+              icon={AlertTriangle}
+              title="Top Blood Type (7 Days)"
+              value={topBloodType7?.bloodType || "-"}
+              description={
+                topBloodType7
+                  ? `${Math.round(topBloodType7.value)} units expected`
+                  : "No data"
+              }
+              tone="amber"
+            />
+            <KPICard
+              icon={TrendingUp}
+              title="Year-over-Year Demand"
+              value={yoyDisplay?.value || "-"}
+              description={
+                yoyDisplay ? (
+                  <>
+                    <span
+                      className={
+                        yoyDisplay.trend === "Increasing"
+                          ? "text-red-600 font-medium"
+                          : yoyDisplay.trend === "Decreasing"
+                            ? "text-green-600 font-medium"
+                            : "text-muted-foreground"
+                      }
                     >
-                      <stop
-                        offset="5%"
-                        stopColor="hsl(217, 91%, 60%)"
-                        stopOpacity={0.8}
-                      />
-                      <stop
-                        offset="95%"
-                        stopColor="hsl(217, 91%, 60%)"
-                        stopOpacity={0.1}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    className="stroke-muted"
-                  />
-                  <XAxis
-                    dataKey="date"
-                    className="text-xs"
-                    tickFormatter={(value) =>
-                      new Date(value).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })
-                    }
-                  />
-                  <YAxis className="text-xs" />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        labelFormatter={(value) =>
-                          new Date(value).toLocaleDateString("en-US", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                          })
-                        }
-                      />
-                    }
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="total_predicted_demand"
-                    stroke="hsl(217, 91%, 60%)"
-                    fillOpacity={1}
-                    fill="url(#colorDemand)"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </AreaChart>
-              </ChartContainer>
-            </ChartCardWithIcon>
-            </PrintableSelector>
-
-            <PrintableSelector id="demand-change">
-            <ChartCardWithIcon
-              icon={Activity}
-              title="Demand Change"
-              description="Daily change in demand"
-            >
-              <ChartContainer config={chartConfig} className="h-72 w-full">
-                <BarChart data={accelerationData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    className="stroke-muted"
-                  />
-                  <XAxis
-                    dataKey="date"
-                    className="text-xs"
-                    tickFormatter={(value) =>
-                      new Intl.DateTimeFormat("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      }).format(new Date(value))
-                    }
-                  />
-                  <YAxis className="text-xs" />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        labelFormatter={(value) =>
-                          new Date(value).toLocaleDateString("en-US", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                          })
-                        }
-                      />
-                    }
-                  />
-                  <Bar
-                    dataKey="change"
-                    fill="var(--color-change)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            </ChartCardWithIcon>
-            </PrintableSelector>
+                      {yoyDisplay.comparison} • {yoyDisplay.trend}
+                    </span>
+                    <br />
+                    <span className="text-xs text-muted-foreground">
+                      {yoyDisplay.range} vs last year
+                    </span>
+                  </>
+                ) : (
+                  "No comparison data"
+                )
+              }
+              tone={yoyDisplay?.tone || "neutral"}
+            />
           </div>
         )}
-      </div>
+        {/* PRIMARY FORECAST SECTION */}
+        <div className="space-y-6">
+          {mode === "backtest" && (
+            <>
+              <PrintableSelector id="backtest-total">
+                <ChartCardWithIcon
+                  icon={TrendingUp}
+                  title="Total Demand Backtest"
+                  description="Actual vs predicted demand across all blood types"
+                >
+                  {/* PRINT-ONLY HEADER */}
+                  <div
+                    data-print-only="true"
+                    className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                  >
+                    <p className="text-base font-bold text-foreground">
+                      Scope:{" "}
+                      <span className="text-primary">
+                        All blood types (total)
+                      </span>
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Confidence interval shown:{" "}
+                      <b>
+                        {selectedBacktestCI === "both"
+                          ? "80% and 95%"
+                          : selectedBacktestCI === "80"
+                            ? "80%"
+                            : "95%"}
+                      </b>
+                    </p>
+                  </div>
 
-      {/* PROJECTION & TRENDS SECTION */}
-      {mode === "live" && (
-        <div className="grid grid-cols-1 gap-6">
-          <PrintableSelector id="demand-budget">
-          <ChartCardWithIcon
-            icon={Calendar}
-            title="30-Day Demand Budget by Blood Type"
-            description="Forecasted total demand for planning"
-          >
-            <DemandBudgetCard
-              demandBudget30Days={demandBudget30Days}
-              rankedBudget={rankedBudget}
-              trendByBloodType={trendByBloodType} // 👈 ADD THIS
-              BLOOD_TYPES={BLOOD_TYPES}
-            />
-          </ChartCardWithIcon>
-          </PrintableSelector>
-          {/* BLOOD TYPE CONTRIBUTION */}
-          <PrintableSelector id="demand-by-blood-type">
-          <ChartCardWithIcon
-            icon={Droplet}
-            title="Demand by Blood Type"
-            description="Trend of predicted demand across blood types"
-          >
-            {mostInDemandBloodType && (
-              <div className="mb-4 flex flex-col gap-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
-                    Most in demand this month
+                  {/* INTERACTIVE CONTROLS — hidden in print */}
+                  <div data-no-print="true" className="mb-4 flex justify-end">
+                    <div className="flex rounded-md border border-border bg-background p-0.5">
+                      {[
+                        {
+                          key: "80",
+                          label: "80% CI",
+                          active: "bg-green-600 text-white",
+                        },
+                        {
+                          key: "95",
+                          label: "95% CI",
+                          active: "bg-blue-600 text-white",
+                        },
+                        {
+                          key: "both",
+                          label: "Both",
+                          active: "bg-primary text-primary-foreground",
+                        },
+                      ].map(({ key, label, active }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setSelectedBacktestCI(key)}
+                          className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            selectedBacktestCI === key
+                              ? `${active} shadow-sm`
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <ChartContainer config={chartConfig} className="h-72 w-full">
+                    <ComposedChart data={backtestGrouped}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <ChartTooltip content={<BacktestTooltip />} />
+
+                      {/* 95% CI band */}
+                      {(selectedBacktestCI === "95" ||
+                        selectedBacktestCI === "both") && (
+                        <Area
+                          type="linear"
+                          dataKey="ci_95_upper"
+                          baseValue={(d) =>
+                            Number.isFinite(d.ci_95_lower)
+                              ? d.ci_95_lower
+                              : d.predicted
+                          }
+                          fill="rgba(147,197,253,0.25)"
+                          stroke="none"
+                          isAnimationActive={false}
+                        />
+                      )}
+
+                      {/* 80% CI band */}
+                      {(selectedBacktestCI === "80" ||
+                        selectedBacktestCI === "both") && (
+                        <Area
+                          type="linear"
+                          dataKey="ci_80_upper"
+                          baseValue={(d) =>
+                            Number.isFinite(d.ci_80_lower)
+                              ? d.ci_80_lower
+                              : d.predicted
+                          }
+                          fill="rgba(34,197,94,0.35)"
+                          stroke="none"
+                          isAnimationActive={false}
+                        />
+                      )}
+
+                      {/* Lower bound lines */}
+                      {(selectedBacktestCI === "80" ||
+                        selectedBacktestCI === "both") && (
+                        <Line
+                          type="linear"
+                          dataKey="ci_80_lower"
+                          stroke="#16a34a"
+                          strokeWidth={1.5}
+                          strokeDasharray="5 3"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
+                      {(selectedBacktestCI === "95" ||
+                        selectedBacktestCI === "both") && (
+                        <Line
+                          type="linear"
+                          dataKey="ci_95_lower"
+                          stroke="#2563eb"
+                          strokeWidth={1.5}
+                          strokeDasharray="5 3"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
+
+                      {/* ACTUAL */}
+                      <Line
+                        type="monotone"
+                        dataKey="actual"
+                        stroke="#22c55e"
+                        strokeWidth={3}
+                      />
+
+                      {/* PREDICTED */}
+                      <Line
+                        type="monotone"
+                        dataKey="predicted"
+                        stroke="#dc2626"
+                        strokeWidth={3}
+                        dot={{ r: 3 }}
+                      />
+                    </ComposedChart>
+                  </ChartContainer>
+                  {metrics && totals && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Model Error
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          RMSE: <b>{formatMetric(metrics.RMSE_model)}</b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAE: <b>{formatMetric(metrics.MAE_model)}</b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAPE: <b>{formatMetric(metrics.MAPE_model, "%")}</b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Baseline Error
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          RMSE: <b>{formatMetric(metrics.RMSE_baseline)}</b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAE: <b>{formatMetric(metrics.MAE_baseline)}</b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAPE:{" "}
+                          <b>{formatMetric(metrics.MAPE_baseline, "%")}</b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Actual vs Predicted
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          Actual: <b>{formatMetric(totals.actual_total)}</b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          Predicted:{" "}
+                          <b>{formatMetric(totals.predicted_total)}</b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Difference
+                        </p>
+                        <p
+                          className={`mt-2 text-lg font-bold ${
+                            totals.difference > 0
+                              ? "text-blue-600"
+                              : totals.difference < 0
+                                ? "text-red-600"
+                                : "text-foreground"
+                          }`}
+                        >
+                          {totals.difference > 0 ? "+" : ""}
+                          {formatMetric(totals.difference)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatMetric(totals.percentage_error, "%")} error
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {false && selectedBacktestMetrics && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Model Error
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          RMSE:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.RMSE_model)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAE:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.MAE_model)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAPE:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.MAPE_model,
+                              "%",
+                            )}
+                          </b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Baseline Error
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          RMSE:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.RMSE_baseline,
+                            )}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAE:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.MAE_baseline)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAPE:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.MAPE_baseline,
+                              "%",
+                            )}
+                          </b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Actual vs Predicted
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          Actual:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.actual_total)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          Predicted:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.predicted_total,
+                            )}
+                          </b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Difference
+                        </p>
+                        <p
+                          className={`mt-2 text-lg font-bold ${
+                            selectedBacktestMetrics.difference > 0
+                              ? "text-blue-600"
+                              : selectedBacktestMetrics.difference < 0
+                                ? "text-red-600"
+                                : "text-foreground"
+                          }`}
+                        >
+                          {selectedBacktestMetrics.difference > 0 ? "+" : ""}
+                          {formatMetric(selectedBacktestMetrics.difference)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatMetric(
+                            selectedBacktestMetrics.percentage_error,
+                            "%",
+                          )}{" "}
+                          error
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {/* METRICS */}
+                  {false && metrics && (
+                    <div className="mt-4 text-sm">
+                      RMSE (Model): <b>{metrics.RMSE_model}</b> | MAE (Model):{" "}
+                      <b>{metrics.MAE_model}</b> | MAPE (Model):{" "}
+                      <b>{metrics.MAPE_model}%</b>
+                      <br />
+                      RMSE (Baseline): <b>{metrics.RMSE_baseline}</b> | MAE
+                      (Baseline): <b>{metrics.MAE_baseline}</b> | MAPE
+                      (Baseline): <b>{metrics.MAPE_baseline}%</b>
+                      {/* 🔥 NEW SECTION */}
+                      {totals && (
+                        <>
+                          <hr className="my-2 opacity-30" />
+                          Total Actual: <b>{totals.actual_total}</b> |
+                          Predicted: <b>{totals.predicted_total}</b>
+                          <br />
+                          Difference:{" "}
+                          <b
+                            className={
+                              totals.difference > 0
+                                ? "text-blue-500"
+                                : totals.difference < 0
+                                  ? "text-red-500"
+                                  : ""
+                            }
+                          >
+                            {totals.difference > 0 ? "+" : ""}
+                            {totals.difference}
+                          </b>{" "}
+                          ({totals.percentage_error}%)
+                        </>
+                      )}
+                    </div>
+                  )}
+                </ChartCardWithIcon>
+              </PrintableSelector>
+              <PrintableSelector
+                id="backtest-by-blood-type"
+                note={`Currently: ${selectedBacktestBloodType}`}
+              >
+                <ChartCardWithIcon
+                  icon={Droplet}
+                  title="Backtest by Blood Type"
+                  description="Actual vs predicted demand for each individual blood type"
+                >
+                  {/* PRINT-ONLY HEADER — explicit context for paper readers */}
+                  <div
+                    data-print-only="true"
+                    className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                  >
+                    <p className="text-base font-bold text-foreground">
+                      Selected Blood Type:{" "}
+                      <span className="text-primary">
+                        {selectedBacktestBloodType}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Confidence interval shown:{" "}
+                      <b>
+                        {selectedBloodTypeCI === "both"
+                          ? "80% and 95%"
+                          : selectedBloodTypeCI === "80"
+                            ? "80%"
+                            : "95%"}
+                      </b>
+                    </p>
+                  </div>
+
+                  {/* INTERACTIVE CONTROLS — hidden in print */}
+                  <div
+                    data-no-print="true"
+                    className="mb-4 flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      {BLOOD_TYPES.map((bt) => (
+                        <button
+                          key={bt}
+                          type="button"
+                          onClick={() => setSelectedBacktestBloodType(bt)}
+                          className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            selectedBacktestBloodType === bt
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          {bt}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex rounded-md border border-border bg-background p-0.5">
+                      {[
+                        {
+                          key: "80",
+                          label: "80% CI",
+                          active: "bg-green-600 text-white",
+                        },
+                        {
+                          key: "95",
+                          label: "95% CI",
+                          active: "bg-blue-600 text-white",
+                        },
+                        {
+                          key: "both",
+                          label: "Both",
+                          active: "bg-primary text-primary-foreground",
+                        },
+                      ].map(({ key, label, active }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setSelectedBloodTypeCI(key)}
+                          className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            selectedBloodTypeCI === key
+                              ? `${active} shadow-sm`
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <ChartContainer config={chartConfig} className="h-72 w-full">
+                    <ComposedChart data={bloodTypeBacktestGrouped}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <ChartTooltip content={<BacktestTooltip />} />
+
+                      {/* 95% CI band */}
+                      {(selectedBloodTypeCI === "95" ||
+                        selectedBloodTypeCI === "both") && (
+                        <Area
+                          type="linear"
+                          dataKey="ci_95_upper"
+                          baseValue={(d) =>
+                            Number.isFinite(d.ci_95_lower)
+                              ? d.ci_95_lower
+                              : d.predicted
+                          }
+                          fill="rgba(147,197,253,0.25)"
+                          stroke="none"
+                          isAnimationActive={false}
+                        />
+                      )}
+
+                      {/* 80% CI band */}
+                      {(selectedBloodTypeCI === "80" ||
+                        selectedBloodTypeCI === "both") && (
+                        <Area
+                          type="linear"
+                          dataKey="ci_80_upper"
+                          baseValue={(d) =>
+                            Number.isFinite(d.ci_80_lower)
+                              ? d.ci_80_lower
+                              : d.predicted
+                          }
+                          fill="rgba(34,197,94,0.35)"
+                          stroke="none"
+                          isAnimationActive={false}
+                        />
+                      )}
+
+                      {/* Lower bound lines */}
+                      {(selectedBloodTypeCI === "80" ||
+                        selectedBloodTypeCI === "both") && (
+                        <Line
+                          type="linear"
+                          dataKey="ci_80_lower"
+                          stroke="#16a34a"
+                          strokeWidth={1.5}
+                          strokeDasharray="5 3"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
+                      {(selectedBloodTypeCI === "95" ||
+                        selectedBloodTypeCI === "both") && (
+                        <Line
+                          type="linear"
+                          dataKey="ci_95_lower"
+                          stroke="#2563eb"
+                          strokeWidth={1.5}
+                          strokeDasharray="5 3"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
+
+                      <Line
+                        type="monotone"
+                        dataKey="actual"
+                        stroke="#22c55e"
+                        strokeWidth={3}
+                        dot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="predicted"
+                        stroke="#dc2626"
+                        strokeWidth={3}
+                        dot={{ r: 3 }}
+                      />
+                    </ComposedChart>
+                  </ChartContainer>
+
+                  {selectedBacktestMetrics && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Model Error
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          RMSE:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.RMSE_model)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAE:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.MAE_model)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAPE:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.MAPE_model,
+                              "%",
+                            )}
+                          </b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Baseline Error
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          RMSE:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.RMSE_baseline,
+                            )}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAE:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.MAE_baseline)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          MAPE:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.MAPE_baseline,
+                              "%",
+                            )}
+                          </b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Actual vs Predicted
+                        </p>
+                        <p className="mt-2 text-sm text-foreground">
+                          Actual:{" "}
+                          <b>
+                            {formatMetric(selectedBacktestMetrics.actual_total)}
+                          </b>
+                        </p>
+                        <p className="text-sm text-foreground">
+                          Predicted:{" "}
+                          <b>
+                            {formatMetric(
+                              selectedBacktestMetrics.predicted_total,
+                            )}
+                          </b>
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                          Difference
+                        </p>
+                        <p
+                          className={`mt-2 text-lg font-bold ${
+                            selectedBacktestMetrics.difference > 0
+                              ? "text-blue-600"
+                              : selectedBacktestMetrics.difference < 0
+                                ? "text-red-600"
+                                : "text-foreground"
+                          }`}
+                        >
+                          {selectedBacktestMetrics.difference > 0 ? "+" : ""}
+                          {formatMetric(selectedBacktestMetrics.difference)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatMetric(
+                            selectedBacktestMetrics.percentage_error,
+                            "%",
+                          )}{" "}
+                          error
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </ChartCardWithIcon>
+              </PrintableSelector>
+            </>
+          )}
+          {/* MAIN TREND CHART */}
+          {mode === "live" && (
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(22rem,0.8fr)]">
+              <PrintableSelector id="total-demand-forecast">
+                <ChartCardWithIcon
+                  icon={TrendingUp}
+                  title="Total Demand Forecast"
+                  description="30-day trend of total blood demand across all types"
+                >
+                  {/* PRINT-ONLY HEADER */}
+                  <div
+                    data-print-only="true"
+                    className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                  >
+                    <p className="text-base font-bold text-foreground">
+                      Total Demand Forecast
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Predicted total daily blood demand across all eight blood
+                      types over the next 30 days. Each point on the chart
+                      represents the projected units of blood needed that day;
+                      the shaded area emphasizes the overall trend.
+                    </p>
+                  </div>
+
+                  <ChartContainer config={chartConfig} className="h-72 w-full">
+                    <AreaChart data={totalForecast}>
+                      <defs>
+                        <linearGradient
+                          id="colorDemand"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="hsl(217, 91%, 60%)"
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="hsl(217, 91%, 60%)"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                      />
+                      <XAxis
+                        dataKey="date"
+                        className="text-xs"
+                        tickFormatter={(value) =>
+                          new Date(value).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })
+                        }
+                      />
+                      <YAxis className="text-xs" />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={(value) =>
+                              new Date(value).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })
+                            }
+                          />
+                        }
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="total_predicted_demand"
+                        stroke="hsl(217, 91%, 60%)"
+                        fillOpacity={1}
+                        fill="url(#colorDemand)"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+
+                  {/* PRINT-ONLY SUMMARY */}
+                  {printSummaries.totalDemand && (
+                    <div
+                      data-print-only="true"
+                      className="mt-4 rounded-md border border-gray-300 bg-gray-50 px-4 py-3"
+                    >
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground">
+                        Numerical Summary
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Forecast Period
+                          </span>
+                          <b>
+                            {printSummaries.totalDemand.startDate} –{" "}
+                            {printSummaries.totalDemand.endDate}
+                          </b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Days</span>
+                          <b>{printSummaries.totalDemand.days}</b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Total Demand
+                          </span>
+                          <b>{printSummaries.totalDemand.total} units</b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Average / Day
+                          </span>
+                          <b>{printSummaries.totalDemand.avg} units</b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Peak Day
+                          </span>
+                          <b>
+                            {printSummaries.totalDemand.peakDate} (
+                            {printSummaries.totalDemand.peak} units)
+                          </b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Lowest Day
+                          </span>
+                          <b>
+                            {printSummaries.totalDemand.minDate} (
+                            {printSummaries.totalDemand.min} units)
+                          </b>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </ChartCardWithIcon>
+              </PrintableSelector>
+
+              <PrintableSelector id="demand-change">
+                <ChartCardWithIcon
+                  icon={Activity}
+                  title="Demand Change"
+                  description="Daily change in demand"
+                >
+                  {/* PRINT-ONLY HEADER */}
+                  <div
+                    data-print-only="true"
+                    className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                  >
+                    <p className="text-base font-bold text-foreground">
+                      Daily Demand Change
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Day-over-day change in total predicted blood demand.
+                      Positive bars (above the zero line) indicate rising demand
+                      compared to the previous day; negative bars (below the
+                      zero line) indicate falling demand.
+                    </p>
+                  </div>
+
+                  <ChartContainer config={chartConfig} className="h-72 w-full">
+                    <BarChart data={accelerationData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                      />
+                      <XAxis
+                        dataKey="date"
+                        className="text-xs"
+                        tickFormatter={(value) =>
+                          new Intl.DateTimeFormat("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          }).format(new Date(value))
+                        }
+                      />
+                      <YAxis className="text-xs" />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={(value) =>
+                              new Date(value).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })
+                            }
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="change"
+                        fill="var(--color-change)"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+
+                  {/* PRINT-ONLY SUMMARY */}
+                  {printSummaries.demandChange && (
+                    <div
+                      data-print-only="true"
+                      className="mt-4 rounded-md border border-gray-300 bg-gray-50 px-4 py-3"
+                    >
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground">
+                        Numerical Summary
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Days Trending Up
+                          </span>
+                          <b>{printSummaries.demandChange.upDays}</b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Days Trending Down
+                          </span>
+                          <b>{printSummaries.demandChange.downDays}</b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Largest Increase
+                          </span>
+                          <b>{printSummaries.demandChange.largestUp}</b>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Largest Decrease
+                          </span>
+                          <b>{printSummaries.demandChange.largestDown}</b>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </ChartCardWithIcon>
+              </PrintableSelector>
+            </div>
+          )}
+        </div>
+
+        {/* PROJECTION & TRENDS SECTION */}
+        {mode === "live" && (
+          <div className="grid grid-cols-1 gap-6">
+            <PrintableSelector id="demand-budget">
+              <ChartCardWithIcon
+                icon={Calendar}
+                title="30-Day Demand Budget by Blood Type"
+                description="Forecasted total demand for planning"
+              >
+                {/* PRINT-ONLY HEADER */}
+                <div
+                  data-print-only="true"
+                  className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                >
+                  <p className="text-base font-bold text-foreground">
+                    30-Day Demand Budget by Blood Type
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Highest total predicted demand across the forecast window.
+                    Total forecasted units of blood needed per blood type across
+                    the next 30 days. Use this as a planning budget for stock
+                    procurement and to identify which blood types will see the
+                    heaviest demand.
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/25 bg-background text-lg font-bold text-primary">
-                    {mostInDemandBloodType.bloodType}
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold tracking-tight text-foreground">
-                      {Math.round(mostInDemandBloodType.demand)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      predicted units
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <LineChart data={groupedData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 
-                <XAxis
-                  dataKey="date"
-                  className="text-xs"
-                  tickFormatter={(value) =>
-                    new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }
+                <DemandBudgetCard
+                  demandBudget30Days={demandBudget30Days}
+                  rankedBudget={rankedBudget}
+                  trendByBloodType={trendByBloodType}
+                  BLOOD_TYPES={BLOOD_TYPES}
                 />
+              </ChartCardWithIcon>
+            </PrintableSelector>
+            {/* BLOOD TYPE CONTRIBUTION */}
+            <PrintableSelector id="demand-by-blood-type">
+              <ChartCardWithIcon
+                icon={Droplet}
+                title="Demand by Blood Type"
+                description="Trend of predicted demand across blood types"
+              >
+                {/* PRINT-ONLY HEADER */}
+                <div
+                  data-print-only="true"
+                  className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                >
+                  <p className="text-base font-bold text-foreground">
+                    Demand by Blood Type
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Predicted daily blood demand for each of the eight blood
+                    types across the forecast window. Each colored line
+                    represents one blood type; the legend below the chart
+                    identifies which line belongs to which type.
+                  </p>
+                </div>
 
-                <YAxis className="text-xs" />
+                {mostInDemandBloodType && (
+                  <div className="mb-4 flex flex-col gap-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                        Most in demand this month
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Highest total predicted demand across the forecast
+                        window.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/25 bg-background text-lg font-bold text-primary">
+                        {mostInDemandBloodType.bloodType}
+                      </div>
+                      <div>
+                        <p className="text-xl font-bold tracking-tight text-foreground">
+                          {Math.round(mostInDemandBloodType.demand)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          predicted units
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <ChartContainer config={chartConfig} className="h-72 w-full">
+                  <LineChart data={groupedData}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      className="stroke-muted"
+                    />
 
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(value) =>
+                    <XAxis
+                      dataKey="date"
+                      className="text-xs"
+                      tickFormatter={(value) =>
                         new Date(value).toLocaleDateString("en-US", {
-                          year: "numeric",
                           month: "short",
                           day: "numeric",
                         })
                       }
                     />
-                  }
+
+                    <YAxis className="text-xs" />
+
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(value) =>
+                            new Date(value).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })
+                          }
+                        />
+                      }
+                    />
+
+                    <ChartLegend
+                      content={<ChartLegendContent />}
+                      wrapperStyle={{ paddingTop: "16px" }}
+                    />
+
+                    {BLOOD_TYPES.map((bt) => (
+                      <Line
+                        key={bt}
+                        type="monotone"
+                        dataKey={bt}
+                        stroke={chartConfig[bt].color}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ChartContainer>
+
+                {/* PRINT-ONLY SUMMARY */}
+                {printSummaries.perType && (
+                  <div
+                    data-print-only="true"
+                    className="mt-4 rounded-md border border-gray-300 bg-gray-50 px-4 py-3"
+                  >
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground">
+                      30-Day Total Demand by Blood Type
+                    </p>
+                    <div className="grid grid-cols-4 gap-x-4 gap-y-1.5 text-sm">
+                      {printSummaries.perType.map((t) => (
+                        <div
+                          key={t.bt}
+                          className="flex justify-between rounded border border-gray-300 bg-white px-2 py-1"
+                        >
+                          <span className="font-semibold">{t.bt}</span>
+                          <span>{t.total} units</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ChartCardWithIcon>
+            </PrintableSelector>
+
+            <PrintableSelector id="high-demand-streak">
+              <div className="space-y-2">
+                {/* PRINT-ONLY HEADER */}
+                <div
+                  data-print-only="true"
+                  className="rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                >
+                  <p className="text-base font-bold text-foreground">
+                    High-Demand Streak Alerts
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Blood types forecasted to remain in elevated demand for
+                    multiple consecutive days. These streaks indicate sustained
+                    pressure on inventory and may require advance stock
+                    planning.
+                  </p>
+                </div>
+
+                <HighDemandStreakAlert streaks={streaks} />
+
+                {/* PRINT-ONLY SUMMARY */}
+                {printSummaries.streakSummary && (
+                  <div
+                    data-print-only="true"
+                    className="rounded-md border border-gray-300 bg-gray-50 px-4 py-3"
+                  >
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground">
+                      Numerical Summary
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Active Streaks
+                        </span>
+                        <b>{printSummaries.streakSummary.count}</b>
+                      </div>
+                      {printSummaries.streakSummary.longest && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Longest Streak
+                          </span>
+                          <b>
+                            {printSummaries.streakSummary.longest.bt} (
+                            {printSummaries.streakSummary.longest.days} days)
+                          </b>
+                        </div>
+                      )}
+                      {printSummaries.streakSummary.longest && (
+                        <div className="col-span-2 flex justify-between">
+                          <span className="text-muted-foreground">
+                            Longest Streak Period
+                          </span>
+                          <b>{printSummaries.streakSummary.longest.range}</b>
+                        </div>
+                      )}
+                      <div className="col-span-2 flex justify-between">
+                        <span className="text-muted-foreground">
+                          Affected Blood Types
+                        </span>
+                        <b>{printSummaries.streakSummary.types}</b>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </PrintableSelector>
+
+            <PrintableSelector id="trend-by-blood-type">
+              <ChartCardWithIcon
+                icon={GitBranch}
+                title="7-Day Demand Trend by Blood Type"
+                description="Forecast vs recent demand direction"
+              >
+                {/* PRINT-ONLY HEADER */}
+                <div
+                  data-print-only="true"
+                  className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                >
+                  <p className="text-base font-bold text-foreground">
+                    7-Day Demand Trend by Blood Type
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Direction of blood demand for each blood type over the next
+                    7 days — classified as increasing, decreasing, or stable
+                    based on a comparison between recent actual demand and the
+                    upcoming forecast values.
+                  </p>
+                </div>
+
+                <BloodTypeTrendCard
+                  trendByBloodType={trendByBloodType}
+                  BLOOD_TYPES={BLOOD_TYPES}
                 />
 
-                <ChartLegend
-                  content={<ChartLegendContent />}
-                  wrapperStyle={{ paddingTop: "16px" }}
-                />
-
-                {BLOOD_TYPES.map((bt) => (
-                  <Line
-                    key={bt}
-                    type="monotone"
-                    dataKey={bt}
-                    stroke={chartConfig[bt].color}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                ))}
-              </LineChart>
-            </ChartContainer>
-          </ChartCardWithIcon>
-          </PrintableSelector>
-
-          <PrintableSelector id="high-demand-streak">
-          <div className="space-y-2">
-            <HighDemandStreakAlert streaks={streaks} />
-          </div>
-          </PrintableSelector>
-
-          <PrintableSelector id="trend-by-blood-type">
-          <ChartCardWithIcon
-            icon={GitBranch}
-            title="7-Day Demand Trend by Blood Type"
-            description="Forecast vs recent demand direction"
-          >
-            <BloodTypeTrendCard
-              trendByBloodType={trendByBloodType}
-              BLOOD_TYPES={BLOOD_TYPES}
-            />
-          </ChartCardWithIcon>
-          </PrintableSelector>
-
-          <PrintableSelector
-            id="forecast-confidence"
-            note={`Currently: ${selectedForecastBloodType}`}
-          >
-          <ChartCardWithIcon
-            icon={Activity}
-            title="Forecast Confidence Intervals"
-            description="Residual-based 80% and 95% prediction intervals by blood type"
-          >
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                {BLOOD_TYPES.map((bt) => (
-                  <button
-                    key={bt}
-                    type="button"
-                    onClick={() => setSelectedForecastBloodType(bt)}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      selectedForecastBloodType === bt
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
+                {/* PRINT-ONLY SUMMARY */}
+                {printSummaries.trendSummary && (
+                  <div
+                    data-print-only="true"
+                    className="mt-4 rounded-md border border-gray-300 bg-gray-50 px-4 py-3"
                   >
-                    {bt}
-                  </button>
-                ))}
-              </div>
-              <div className="flex rounded-md border border-border bg-background p-0.5">
-                {[
-                  {
-                    key: "80",
-                    label: "80% CI",
-                    active: "bg-green-600 text-white",
-                  },
-                  {
-                    key: "95",
-                    label: "95% CI",
-                    active: "bg-blue-600 text-white",
-                  },
-                  {
-                    key: "both",
-                    label: "Both",
-                    active: "bg-primary text-primary-foreground",
-                  },
-                ].map(({ key, label, active }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSelectedCI(key)}
-                    className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      selectedCI === key
-                        ? `${active} shadow-sm`
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground">
+                      Numerical Summary
+                    </p>
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-1.5 text-sm">
+                      <div className="rounded border border-gray-300 bg-white px-2 py-1.5">
+                        <div className="text-[11px] text-muted-foreground">
+                          Increasing
+                        </div>
+                        <div className="font-bold">
+                          {printSummaries.trendSummary.increasing} type
+                          {printSummaries.trendSummary.increasing === 1
+                            ? ""
+                            : "s"}
+                        </div>
+                      </div>
+                      <div className="rounded border border-gray-300 bg-white px-2 py-1.5">
+                        <div className="text-[11px] text-muted-foreground">
+                          Decreasing
+                        </div>
+                        <div className="font-bold">
+                          {printSummaries.trendSummary.decreasing} type
+                          {printSummaries.trendSummary.decreasing === 1
+                            ? ""
+                            : "s"}
+                        </div>
+                      </div>
+                      <div className="rounded border border-gray-300 bg-white px-2 py-1.5">
+                        <div className="text-[11px] text-muted-foreground">
+                          Stable
+                        </div>
+                        <div className="font-bold">
+                          {printSummaries.trendSummary.stable} type
+                          {printSummaries.trendSummary.stable === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                    </div>
+                    {printSummaries.trendSummary.strongestGrowth && (
+                      <div className="mt-3 flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Strongest Growth
+                        </span>
+                        <b>
+                          {printSummaries.trendSummary.strongestGrowth.bt} (
+                          {printSummaries.trendSummary.strongestGrowth.delta}{" "}
+                          units/day,{" "}
+                          {printSummaries.trendSummary.strongestGrowth.pct})
+                        </b>
+                      </div>
+                    )}
+                    {(printSummaries.trendSummary.newDemand > 0 ||
+                      printSummaries.trendSummary.noDemand > 0) && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Other: {printSummaries.trendSummary.newDemand} new
+                        demand · {printSummaries.trendSummary.noDemand} no
+                        demand
+                      </div>
+                    )}
+                  </div>
+                )}
+              </ChartCardWithIcon>
+            </PrintableSelector>
 
-            {hasForecastIntervals ? (
-              <ChartContainer config={chartConfig} className="h-72 w-full">
-                <ComposedChart data={forecastIntervalData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
+            <PrintableSelector
+              id="forecast-confidence"
+              note={`Currently: ${selectedForecastBloodType}`}
+            >
+              <ChartCardWithIcon
+                icon={Activity}
+                title="Per Blood Type Forecast with Confidence Range"
+                description="Residual-based 80% and 95% prediction intervals by blood type"
+              >
+                {/* PRINT-ONLY HEADER — makes the selection explicit on paper */}
+                <div
+                  data-print-only="true"
+                  className="mb-4 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3"
+                >
+                  <p className="text-base font-bold text-foreground">
+                    Selected Blood Type:{" "}
+                    <span className="text-primary">
+                      {selectedForecastBloodType}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Confidence interval shown:{" "}
+                    <b>
+                      {selectedCI === "both"
+                        ? "80% and 95%"
+                        : selectedCI === "80"
+                          ? "80%"
+                          : "95%"}
+                    </b>
+                  </p>
+                </div>
 
-                  {/* 🔴 FIX: NEVER use function domain here */}
-                  <YAxis domain={[0, "dataMax"]} />
+                {/* INTERACTIVE CONTROLS — hidden in print to avoid showing
+                unselected blood-type / CI buttons that don't reflect the
+                printed data. */}
+                <div
+                  data-no-print="true"
+                  className="mb-4 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div className="flex flex-wrap gap-2">
+                    {BLOOD_TYPES.map((bt) => (
+                      <button
+                        key={bt}
+                        type="button"
+                        onClick={() => setSelectedForecastBloodType(bt)}
+                        className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          selectedForecastBloodType === bt
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        {bt}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex rounded-md border border-border bg-background p-0.5">
+                    {[
+                      {
+                        key: "80",
+                        label: "80% CI",
+                        active: "bg-green-600 text-white",
+                      },
+                      {
+                        key: "95",
+                        label: "95% CI",
+                        active: "bg-blue-600 text-white",
+                      },
+                      {
+                        key: "both",
+                        label: "Both",
+                        active: "bg-primary text-primary-foreground",
+                      },
+                    ].map(({ key, label, active }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedCI(key)}
+                        className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          selectedCI === key
+                            ? `${active} shadow-sm`
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                  <ChartTooltip content={<ForecastTooltip />} />
+                {hasForecastIntervals ? (
+                  <ChartContainer config={chartConfig} className="h-72 w-full">
+                    <ComposedChart data={forecastIntervalData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
 
-                  {/* =========================
+                      {/* 🔴 FIX: NEVER use function domain here */}
+                      <YAxis domain={[0, "dataMax"]} />
+
+                      <ChartTooltip content={<ForecastTooltip />} />
+
+                      {/* =========================
         95% CI (background)
        ========================= */}
-                  {(selectedCI === "95" || selectedCI === "both") && (
-                    <Area
-                      type="linear"
-                      dataKey="ci_95_upper"
-                      baseValue={(d) =>
-                        Number.isFinite(d.ci_95_lower)
-                          ? d.ci_95_lower
-                          : d.prediction
-                      }
-                      fill="rgba(147,197,253,0.25)"
-                      stroke="none"
-                      isAnimationActive={false}
-                    />
-                  )}
+                      {(selectedCI === "95" || selectedCI === "both") && (
+                        <Area
+                          type="linear"
+                          dataKey="ci_95_upper"
+                          baseValue={(d) =>
+                            Number.isFinite(d.ci_95_lower)
+                              ? d.ci_95_lower
+                              : d.prediction
+                          }
+                          fill="rgba(147,197,253,0.25)"
+                          stroke="none"
+                          isAnimationActive={false}
+                        />
+                      )}
 
-                  {/* =========================
+                      {/* =========================
         80% CI (foreground)
        ========================= */}
-                  {(selectedCI === "80" || selectedCI === "both") && (
-                    <Area
-                      type="linear"
-                      dataKey="ci_80_upper"
-                      baseValue={(d) =>
-                        Number.isFinite(d.ci_80_lower)
-                          ? d.ci_80_lower
-                          : d.prediction
-                      }
-                      fill="rgba(34,197,94,0.35)"
-                      stroke="none"
-                      isAnimationActive={false}
-                    />
-                  )}
+                      {(selectedCI === "80" || selectedCI === "both") && (
+                        <Area
+                          type="linear"
+                          dataKey="ci_80_upper"
+                          baseValue={(d) =>
+                            Number.isFinite(d.ci_80_lower)
+                              ? d.ci_80_lower
+                              : d.prediction
+                          }
+                          fill="rgba(34,197,94,0.35)"
+                          stroke="none"
+                          isAnimationActive={false}
+                        />
+                      )}
 
-                  {/* Lower bound lines */}
-                  {(selectedCI === "80" || selectedCI === "both") && (
-                    <Line
-                      type="linear"
-                      dataKey="ci_80_lower"
-                      stroke="#16a34a"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {(selectedCI === "95" || selectedCI === "both") && (
-                    <Line
-                      type="linear"
-                      dataKey="ci_95_lower"
-                      stroke="#2563eb"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  )}
+                      {/* Lower bound lines */}
+                      {(selectedCI === "80" || selectedCI === "both") && (
+                        <Line
+                          type="linear"
+                          dataKey="ci_80_lower"
+                          stroke="#16a34a"
+                          strokeWidth={1.5}
+                          strokeDasharray="5 3"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
+                      {(selectedCI === "95" || selectedCI === "both") && (
+                        <Line
+                          type="linear"
+                          dataKey="ci_95_lower"
+                          stroke="#2563eb"
+                          strokeWidth={1.5}
+                          strokeDasharray="5 3"
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
 
-                  {/* Prediction */}
-                  <Line
-                    type="monotone"
-                    dataKey="prediction"
-                    stroke="#dc2626"
-                    strokeWidth={3}
-                    dot={{ r: 3 }}
-                    isAnimationActive={false}
-                  />
-                </ComposedChart>
-              </ChartContainer>
-            ) : (
-              <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 p-6 text-center">
-                <p>No confidence interval data</p>
-              </div>
-            )}
-          </ChartCardWithIcon>
-          </PrintableSelector>
-        </div>
-      )}
-    </div>
+                      {/* Prediction */}
+                      <Line
+                        type="monotone"
+                        dataKey="prediction"
+                        stroke="#dc2626"
+                        strokeWidth={3}
+                        dot={{ r: 3 }}
+                        isAnimationActive={false}
+                      />
+                    </ComposedChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 p-6 text-center">
+                    <p>No confidence interval data</p>
+                  </div>
+                )}
+
+                {/* PRINT-ONLY SUMMARY */}
+                {printSummaries.ciSummary && (
+                  <div
+                    data-print-only="true"
+                    className="mt-4 rounded-md border border-gray-300 bg-gray-50 px-4 py-3"
+                  >
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground">
+                      Numerical Summary ({selectedForecastBloodType})
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Forecast Period
+                        </span>
+                        <b>
+                          {printSummaries.ciSummary.startDate} –{" "}
+                          {printSummaries.ciSummary.endDate}
+                        </b>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Days</span>
+                        <b>{printSummaries.ciSummary.days}</b>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Average Prediction
+                        </span>
+                        <b>
+                          {printSummaries.ciSummary.avgPrediction} units/day
+                        </b>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Avg 80% CI Width
+                        </span>
+                        <b>±{printSummaries.ciSummary.avgCi80Width} units</b>
+                      </div>
+                      <div className="col-span-2 flex justify-between">
+                        <span className="text-muted-foreground">
+                          Avg 95% CI Width
+                        </span>
+                        <b>±{printSummaries.ciSummary.avgCi95Width} units</b>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </ChartCardWithIcon>
+            </PrintableSelector>
+          </div>
+        )}
+      </div>
     </PrintSelectionContext.Provider>
   );
 }

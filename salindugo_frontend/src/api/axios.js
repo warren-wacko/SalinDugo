@@ -5,7 +5,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
 
-// ✅ Add request interceptor to automatically include token
+// Add request interceptor to automatically include token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("accessToken");
@@ -14,10 +14,10 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
-// ✅ Add response interceptor for token refresh
+// Add response interceptor for token refresh
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -35,7 +35,7 @@ api.interceptors.response.use(
 
         const res = await axios.post(
           `${import.meta.env.VITE_API_URL}/auth/refresh-token`,
-          { refreshToken }
+          { refreshToken },
         );
 
         const newAccessToken = res.data.accessToken;
@@ -52,7 +52,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

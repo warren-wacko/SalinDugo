@@ -1,5 +1,3 @@
-import "./App.css";
-// src/App.jsx or wherever you define routes
 import { useContext } from "react";
 import { AuthContext } from "./context/AuthContext";
 import { Navigate } from "react-router-dom";
@@ -21,9 +19,8 @@ import PrivacyPage from "./views/privacy/page";
 import ChangePasswordPage from "./views/user/change-password/page";
 
 // Dashboard Pages
-import UserDashboard from "./views/user/dashboard/page";
 import HospitalDashboard from "./views/hospital/dashboard/page";
-import AdminDashboard from "./views/admin/dashboard/page";
+
 import ProfilePage from "./views/user/profile/page";
 
 import { Toaster } from "sonner";
@@ -31,7 +28,7 @@ import { Toaster } from "sonner";
 function App() {
   const { user, isLoading } = useContext(AuthContext);
 
-  // 🆕 Wait for auth to load
+  // Wait for auth to load
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -52,15 +49,11 @@ function App() {
           path="/"
           element={
             user ? (
-              // 🔹 ONLY check dashboard routing, NOT profile_completed
+              // ONLY check dashboard routing, NOT profile_completed
               (() => {
                 switch (user.role) {
-                  case "user":
-                    return <Navigate to="/user-dashboard" />;
                   case "hospital":
                     return <Navigate to="/hospital-dashboard" />;
-                  case "admin":
-                    return <Navigate to="/admin-dashboard" />;
                   default:
                     return <Navigate to="/login" />;
                 }
@@ -113,17 +106,9 @@ function App() {
         />
         {/* Private routes */}
         <Route
-          path="/user-dashboard"
-          element={
-            <PrivateRoute allowedRoles={["user"]}>
-              <UserDashboard />
-            </PrivateRoute>
-          }
-        />
-        <Route
           path="/profile"
           element={
-            <PrivateRoute allowedRoles={["user", "hospital", "admin"]}>
+            <PrivateRoute allowedRoles={["user", "hospital"]}>
               <ProfilePage />
             </PrivateRoute>
           }
@@ -131,7 +116,7 @@ function App() {
         <Route
           path="/change-password"
           element={
-            <PrivateRoute allowedRoles={["user", "hospital", "admin"]}>
+            <PrivateRoute allowedRoles={["user", "hospital"]}>
               <ChangePasswordPage />
             </PrivateRoute>
           }
@@ -149,14 +134,6 @@ function App() {
           element={
             <PrivateRoute allowedRoles={["hospital"]}>
               <ImportData />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/admin-dashboard"
-          element={
-            <PrivateRoute allowedRoles={["admin"]}>
-              <AdminDashboard />
             </PrivateRoute>
           }
         />

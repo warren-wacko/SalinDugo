@@ -28,9 +28,7 @@ BACKTEST_CUTOFF_DATE = pd.Timestamp("2025-09-30")
 BACKTEST_START_DATE = pd.Timestamp("2025-10-01")
 BACKTEST_END_DATE = pd.Timestamp("2025-10-31")
 
-# ====================================================
 # FEATURES — must match training FEATURES list exactly
-# ====================================================
 FEATURES = [
     "lag_1", "lag_2", "lag_3", "lag_7", "lag_14",
     "diff_1", "diff_7",
@@ -51,9 +49,7 @@ models   = joblib.load(os.path.join(BASE_DIR, "model/xgboost_real.pkl"))
 engine   = create_engine(os.getenv("DATABASE_URL"))
 
 
-# ====================================================
 # LOAD DATA
-# ====================================================
 def load_center_history(hospital_id):
     query = """
         SELECT
@@ -68,10 +64,7 @@ def load_center_history(hospital_id):
     """
     return pd.read_sql(query, engine, params=(hospital_id,))
 
-
-# ====================================================
 # COMPLETE MISSING DATES
-# ====================================================
 def complete_missing_dates(df):
     df["date"] = pd.to_datetime(df["date"])
     all_filled = []
@@ -92,10 +85,7 @@ def complete_missing_dates(df):
 
     return pd.concat(all_filled, ignore_index=True)
 
-
-# ====================================================
 # FEATURE ENGINEERING — mirrors training exactly
-# ====================================================
 def build_features(df):
     df["blood_type"] = df["blood_type"].str.strip().str.upper()
     groups = []
@@ -152,10 +142,7 @@ def build_features(df):
 
     return pd.concat(groups, ignore_index=True).dropna().reset_index(drop=True)
 
-
-# ====================================================
 # COMPUTE FEATURES FOR ONE FUTURE STEP
-# ====================================================
 def compute_row_features(hist: pd.Series, new_date: pd.Timestamp) -> dict:
     lag_1  = float(hist.iloc[-1])
     lag_2  = float(hist.iloc[-2])
@@ -221,17 +208,7 @@ def compute_row_features(hist: pd.Series, new_date: pd.Timestamp) -> dict:
     }
 
 
-# ====================================================
 # SOFT PREDICTION
-#
-# FIX 3: replaces hard binary (prob < thr → 0).
-# Scales prediction down for mid-confidence probs
-# to eliminate the cliff edge that inflates MAE.
-#
-# prob < soft_floor              → hard 0
-# soft_floor ≤ prob < threshold  → partial (scaled by prob)
-# prob ≥ threshold               → full prediction
-# ====================================================
 def soft_predict_scalar(clf, reg, X_future, threshold, soft_floor):
     prob = clf.predict_proba(X_future)[0][1]
 
@@ -247,10 +224,7 @@ def soft_predict_scalar(clf, reg, X_future, threshold, soft_floor):
 
     return raw
 
-
-# ====================================================
 # RECURSIVE FORECAST
-# ====================================================
 def recursive_forecast_with_meta(models, df, days_ahead=30):
     future_predictions = []
     working_df         = df.copy()
@@ -287,16 +261,15 @@ def recursive_forecast_with_meta(models, df, days_ahead=30):
                 row      = compute_row_features(hist, new_date)
                 X_future = pd.DataFrame([row])[FEATURES].fillna(0)
 
-                # 🔥 Get probability (demand likelihood)
+                # Get probability (demand likelihood)
                 prob = float(clf.predict_proba(X_future)[0][1])
 
-                # 🔥 Get regression output (magnitude)
+                # Get regression output (magnitude)
                 reg_pred = float(reg.predict(X_future)[0])
 
-                # 🔥 Smooth gating (NO thresholds, NO hard cuts)
+                # Smooth gating (NO thresholds, NO hard cuts)
                 raw_pred = prob * reg_pred
 
-                # 🔥 Optional: light spike correction (very conservative)
                 if raw_pred > 10:
                     raw_pred *= 1.05
 
@@ -319,10 +292,7 @@ def recursive_forecast_with_meta(models, df, days_ahead=30):
 
     return pd.DataFrame(future_predictions)
 
-
-# ====================================================
 # HELPERS
-# ====================================================
 def compute_days_cover(stock, total_predicted_demand, days=30):
     if total_predicted_demand <= 0:
         return None
@@ -341,11 +311,7 @@ def compute_risk_level(days_cover):
         return "warning"
     return "safe"
 
-
-# ====================================================
 # API ENDPOINTS
-# ====================================================
-
 @app.get("/forecast/{hospital_id}")
 def forecast(hospital_id, days: int = 30):
     try:
@@ -591,9 +557,7 @@ def compute_backtest_metrics(group):
 @app.get("/backtest/{hospital_id}")
 def backtest(hospital_id):
     try:
-        # ===============================
         # LOAD DATA
-        # ===============================
         full_df = load_center_history(hospital_id)
 
         if full_df.empty:
@@ -663,16 +627,12 @@ def backtest(hospital_id):
             },
         }
 
-        # ===============================
         # DEFINE SPLIT (OCTOBER ONLY)
-        # ===============================
         cutoff_date = pd.Timestamp("2025-09-30")
         test_start  = pd.Timestamp("2025-10-01")
-        test_end    = pd.Timestamp("2025-10-31")  # ✅ ONLY OCTOBER
+        test_end    = pd.Timestamp("2025-10-31")  # ONLY OCTOBER
 
-        # ===============================
         # SPLIT DATA
-        # ===============================
         train_df = full_df[full_df["date"] <= cutoff_date].copy()
         test_df  = full_df[
             (full_df["date"] >= test_start) &
@@ -682,31 +642,23 @@ def backtest(hospital_id):
         if train_df.empty or test_df.empty:
             return {"error": "Not enough data for selected period"}
 
-        # ===============================
         # BUILD FEATURES (TRAIN ONLY)
-        # ===============================
         train_df = build_features(train_df)
 
-        # ===============================
         # FORECAST ONLY REQUIRED DAYS
-        # ===============================
         days = (test_end - cutoff_date).days  # ~31 days
         forecast_df = recursive_forecast_with_meta(models, train_df, days)
 
-        # ===============================
         # MERGE PREDICTION + ACTUAL
-        # ===============================
         merged = pd.merge(
             forecast_df,
             test_df,
             on=["date", "blood_type"],
-            how="inner",  # ✅ IMPORTANT: no extra rows
+            how="inner",  # IMPORTANT: no extra rows
             suffixes=("_pred", "_actual"),
         )
 
-        # ===============================
         # STRICT FILTER (SAFETY)
-        # ===============================
         merged = merged[
             (merged["date"] >= test_start) &
             (merged["date"] <= test_end)
@@ -715,15 +667,11 @@ def backtest(hospital_id):
         if merged.empty:
             return {"error": "No overlapping prediction vs actual data"}
 
-        # ===============================
         # CLEAN VALUES
-        # ===============================
         merged["blood_requests_actual"] = merged["blood_requests_actual"].fillna(0)
         merged["blood_requests_pred"]   = merged["blood_requests_pred"].fillna(0)
 
-        # ===============================
         # BASELINE (LAG-1)
-        # ===============================
         baseline = (
             train_df[["date", "blood_type", "blood_requests"]]
             .copy()
@@ -734,9 +682,7 @@ def backtest(hospital_id):
         merged = merged.merge(baseline, on=["date", "blood_type"], how="left")
         merged["lag_1_pred"] = merged["lag_1_pred"].fillna(0)
 
-        # ===============================
         # METRICS
-        # ===============================
         summary = compute_backtest_metrics(merged)
 
         blood_type_summary = []
@@ -751,9 +697,7 @@ def backtest(hospital_id):
             key=lambda row: row["blood_type"],
         )
 
-        # ===============================
         # FORMAT OUTPUT
-        # ===============================
         merged["date"] = merged["date"].astype(str)
 
         return {

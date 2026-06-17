@@ -1,49 +1,35 @@
 import dotenv from "dotenv";
-dotenv.config();
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import "./cron/reactivateDonors.js";
-import "./cron/expireBags.js";
+import pool from "./db.js";
+dotenv.config();
 
+// middleware
 import { authenticateToken } from "./middleware/authMiddleware.js";
 
+// routes
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
-import requestRoutes from "./routes/requestRoutes.js";
-import hospitalRoutes from "./routes/hospitalRoutes.js";
-import donationRoutes from "./routes/donationRoutes.js";
-import scheduleRoutes from "./routes/scheduleRoutes.js";
-import notificationRoutes from "./routes/notificationRoutes.js";
-import matchingRoutes from "./routes/matchingRoutes.js";
-import inventoryRoutes from "./routes/inventoryRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
-import demandRoutes from "./routes/demandRoutes.js";
-import adminRoutes from "./routes/adminRoutes.js";
 import importRoutes from "./routes/importRoutes.js";
+
+// safe for dev side only
 console.log("SERVER STARTED:", Date.now());
-import pool from "./db.js";
+
 const app = express();
 app.set("trust proxy", 1);
 app.use(helmet());
-
 app.use(cors());
 app.use(express.json());
 
+// routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/requests", requestRoutes);
-app.use("/api/hospitals", hospitalRoutes);
-app.use("/api/donations", donationRoutes);
-app.use("/api/schedules", scheduleRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/matching", matchingRoutes);
-app.use("/api/stocks", inventoryRoutes);
 app.use("/api/location", locationRoutes);
-app.use("/api/demand", demandRoutes);
-app.use("/api/admin", adminRoutes);
 app.use("/api/import", authenticateToken, importRoutes);
 
+// health check only
 app.get("/", (req, res) => {
   res.send("API is running...");
 });

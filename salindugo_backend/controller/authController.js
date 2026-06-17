@@ -2,13 +2,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { validationResult } from "express-validator";
 import pool from "../db.js";
-import sendEmail from "../utils/email.js"; // NodeMailer helper
-import crypto from "crypto"; // Node.js built-in
-import { logAudit } from "../utils/auditLogger.js";
+import sendEmail from "../utils/email.js"; // brevo helper
+import crypto from "crypto";
 import resetPasswordTemplate from "../utils/templates/resetPasswordTemplate.js";
-// =========================
+
 // Register User
-// =========================
 export const registerUser = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -18,7 +16,7 @@ export const registerUser = async (req, res) => {
 
     const {
       full_name,
-      middle_initial, // ✅ added
+      middle_initial,
       email,
       password,
       role,
@@ -30,8 +28,6 @@ export const registerUser = async (req, res) => {
       title,
       age,
     } = req.body;
-
-    console.log("REGISTER PAYLOAD:", req.body);
 
     // check if email exists
     const userExists = await pool.query("SELECT * FROM users WHERE email=$1", [
@@ -49,7 +45,7 @@ export const registerUser = async (req, res) => {
     const newUser = await pool.query(
       `INSERT INTO users (
         full_name,
-        middle_initial, -- ✅ added
+        middle_initial, 
         email,
         password_hash,
         role,
@@ -67,7 +63,7 @@ export const registerUser = async (req, res) => {
         email,
         role,
         full_name,
-        middle_initial, -- ✅ added
+        middle_initial,
         blood_type,
         date_of_birth,
         contact_number,
@@ -77,7 +73,7 @@ export const registerUser = async (req, res) => {
         age`,
       [
         full_name,
-        middle_initial || null, // ✅ prevent undefined
+        middle_initial || null,
         email,
         hashedPassword,
         role || "user",
@@ -138,9 +134,7 @@ export const registerUser = async (req, res) => {
   }
 };
 
-// =========================
 // Login User
-// =========================
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -163,7 +157,7 @@ export const loginUser = async (req, res) => {
       {
         id: user.rows[0].user_id,
         role: user.rows[0].role,
-        region: user.rows[0].region, // <-- ADD THIS
+        region: user.rows[0].region,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
@@ -173,7 +167,7 @@ export const loginUser = async (req, res) => {
       {
         id: user.rows[0].user_id,
         role: user.rows[0].role,
-        region: user.rows[0].region, // <-- ADD THIS TOO
+        region: user.rows[0].region,
       },
       process.env.JWT_REFRESH,
       { expiresIn: "7d" },
@@ -223,9 +217,7 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// =========================
 // Logout User
-// =========================
 export const logoutUser = async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -243,9 +235,7 @@ export const logoutUser = async (req, res) => {
   }
 };
 
-// =========================
 // Refresh Token
-// =========================
 export const refreshTokenHandler = async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -259,11 +249,9 @@ export const refreshTokenHandler = async (req, res) => {
 
     if (tokenRecord.rows.length === 0) return res.sendStatus(403);
 
-    // 🔍 Validate the refresh token signature
     jwt.verify(refreshToken, process.env.JWT_REFRESH, (err, decoded) => {
       if (err) return res.sendStatus(403);
 
-      // ❗ decoded MUST contain BOTH id and role
       const accessToken = jwt.sign(
         { id: decoded.id, role: decoded.role },
         process.env.JWT_SECRET,
@@ -277,6 +265,7 @@ export const refreshTokenHandler = async (req, res) => {
   }
 };
 
+// Change password
 export const changePassword = async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const userId = req.user.id;
@@ -314,6 +303,7 @@ export const changePassword = async (req, res) => {
   }
 };
 
+// Forget Password Trigger
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
 
@@ -333,7 +323,6 @@ export const forgotPassword = async (req, res) => {
       [token, expiry, email],
     );
 
-    /*  fixed the correct key */
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
@@ -352,11 +341,11 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
+// Reset Password
 export const resetPassword = async (req, res) => {
   const { token, newPassword } = req.body;
 
   try {
-    // 1️⃣ Find user by token and check expiry
     const userRes = await pool.query(
       "SELECT * FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()",
       [token],
@@ -368,10 +357,8 @@ export const resetPassword = async (req, res) => {
 
     const user = userRes.rows[0];
 
-    // 2️⃣ Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // 3️⃣ Update user's password and clear reset token/expiry
     await pool.query(
       "UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL, updated_at = NOW() WHERE user_id = $2",
       [hashedPassword, user.user_id],

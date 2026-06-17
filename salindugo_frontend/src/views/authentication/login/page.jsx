@@ -106,14 +106,8 @@ export default function LoginPage() {
 
         setTimeout(() => {
           switch (data.user.role) {
-            case "user":
-              navigate("/user-dashboard");
-              break;
             case "hospital":
               navigate("/hospital-dashboard");
-              break;
-            case "admin":
-              navigate("/admin-dashboard");
               break;
             default:
               navigate("/");

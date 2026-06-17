@@ -1,9 +1,0 @@
-import express from "express";
-import { authenticateToken } from "../middleware/authMiddleware.js";
-import { getDonations } from "../controller/donationController.js";
-
-const router = express.Router();
-
-router.get("/", authenticateToken, getDonations);
-
-export default router;

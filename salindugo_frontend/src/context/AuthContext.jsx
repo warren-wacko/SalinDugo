@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error("Error loading from localStorage:", err);
     } finally {
-      setIsLoading(false); // 🆕 Set loading to false after attempting to load
+      setIsLoading(false);
     }
   }, []);
 

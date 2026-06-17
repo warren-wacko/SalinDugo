@@ -24,7 +24,7 @@ export const allowNumbersOnly = (e) => {
   }
 };
 
-// ✅ Optional: prevent copy-paste of invalid data (optional)
+// Optional: prevent copy-paste of invalid data
 export const sanitizeInput = (type, value) => {
   if (type === "text") return value.replace(/[^A-Za-zÀ-ÿ\s.'-]/g, "");
   if (type === "number") return value.replace(/[^0-9]/g, "");
