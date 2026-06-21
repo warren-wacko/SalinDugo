@@ -106,10 +106,6 @@ export const registerUser = async (req, res) => {
       [newUser.rows[0].user_id, refreshToken],
     );
 
-    await logAudit(newUser.rows[0].user_id, "register_account", "security", {
-      email,
-    });
-
     res.status(201).json({
       message: "User registered successfully",
       accessToken,
@@ -179,10 +175,6 @@ export const loginUser = async (req, res) => {
       [user.rows[0].user_id, refreshToken],
     );
 
-    await logAudit(user.rows[0].user_id, "login_success", "security", {
-      email,
-    });
-
     res.json({
       accessToken,
       refreshToken,
@@ -208,8 +200,6 @@ export const loginUser = async (req, res) => {
   } catch (err) {
     const safeEmail = req.body?.email || "unknown";
 
-    await logAudit(null, "login_failed", "security", { email: safeEmail });
-
     return res.status(500).json({
       message: "Server error",
       error: err.message,
@@ -227,7 +217,6 @@ export const logoutUser = async (req, res) => {
       "UPDATE refresh_tokens SET revoked=true WHERE token_hash=$1",
       [refreshToken],
     );
-    await logAudit(req.user.id, "logout", "security");
 
     res.json({ message: "Logged out successfully" });
   } catch (err) {
@@ -294,7 +283,6 @@ export const changePassword = async (req, res) => {
       "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2",
       [hashedPassword, userId],
     );
-    await logAudit(userId, "change_password", "security", { userId });
 
     res.json({ message: "Password changed successfully" });
   } catch (err) {
@@ -327,12 +315,6 @@ export const forgotPassword = async (req, res) => {
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
     await sendEmail(email, "Password Reset", resetPasswordTemplate(resetLink));
-    await logAudit(
-      userRes.rows[0].user_id,
-      "request_password_reset",
-      "security",
-      { email },
-    );
 
     res.json({ message: "Password reset email sent" });
   } catch (err) {
@@ -363,7 +345,6 @@ export const resetPassword = async (req, res) => {
       "UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL, updated_at = NOW() WHERE user_id = $2",
       [hashedPassword, user.user_id],
     );
-    await logAudit(user.user_id, "reset_password", "security");
 
     res.json({ message: "Password has been reset successfully" });
   } catch (err) {

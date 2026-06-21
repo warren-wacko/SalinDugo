@@ -14,8 +14,6 @@ import ImportData from "./views/hospital/components/ImportPage";
 import LoginPage from "./views/authentication/login/page";
 import SignUpPage from "./views/authentication/signup/page";
 import ResetPasswordPage from "./views/authentication/reset-password/page";
-import TermsPage from "./views/terms/page";
-import PrivacyPage from "./views/privacy/page";
 import ChangePasswordPage from "./views/user/change-password/page";
 
 // Dashboard Pages
@@ -85,22 +83,6 @@ function App() {
           element={
             <PublicRoute>
               <ResetPasswordPage />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/terms"
-          element={
-            <PublicRoute>
-              <TermsPage />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/privacy"
-          element={
-            <PublicRoute>
-              <PrivacyPage />
             </PublicRoute>
           }
         />
