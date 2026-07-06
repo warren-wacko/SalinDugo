@@ -65,7 +65,6 @@ const Navbar = ({ setActiveTab, hideSettings = false }) => {
       setNotifications(data.notifications || []);
       setTotalPages(data.pagination?.totalPages || data.totalPages || 1);
     } catch (err) {
-      console.error("Error fetching notifications:", err);
       setNotifications([]);
       setTotalPages(1);
     } finally {
